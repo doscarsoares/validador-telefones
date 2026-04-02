@@ -7,9 +7,11 @@ ADB_PATH = "adb"  # Caminho do executável ADB (se estiver no PATH, deixar assim
 DEVICE_SERIAL = None  # None = usar primeiro dispositivo. Ou especificar: "XXXXXXX"
 
 # === TEMPOS (em segundos) ===
-TEMPO_ESPERA_CHAMADA = 25      # Quanto tempo esperar antes de considerar "não atendeu"
-TEMPO_ENTRE_CHAMADAS = 3       # Pausa entre uma ligação e outra
-TEMPO_GRAVACAO_APOS_ATENDER = 5  # Segundos extras após detectar que atendeu (para pegar áudio)
+TEMPO_ESPERA_CHAMADA = 22      # Quanto tempo esperar antes de considerar "não atendeu"
+TEMPO_ENTRE_CHAMADAS_MIN = 2   # Pausa MÍNIMA entre ligações
+TEMPO_ENTRE_CHAMADAS_MAX = 5   # Pausa MÁXIMA entre ligações (aleatório entre min e max)
+TEMPO_ENTRE_CHAMADAS = 3       # Fallback (usado se não usar aleatório)
+TEMPO_GRAVACAO_APOS_ATENDER = 4  # Segundos extras após detectar que atendeu
 TEMPO_TOQUE_MINIMO = 5         # Tempo mínimo de toque antes de considerar válido
 
 # === GRAVAÇÃO DE ÁUDIO ===

@@ -504,6 +504,9 @@ class App(ctk.CTk):
             self.thread.start()
 
     def _executar(self, url, celular, lote):
+        import random
+        MAX_RECONEXOES = 20
+
         try:
             from phone_controller import PhoneController
             from audio_recorder import AudioRecorder
@@ -511,13 +514,39 @@ class App(ctk.CTk):
             from transcriber import transcrever, carregar_modelo
             from classifier import classificar
             from cloud_handler import CloudHandler
-            from config import TEMPO_ESPERA_CHAMADA, TEMPO_ENTRE_CHAMADAS
+            from config import (
+                TEMPO_ESPERA_CHAMADA,
+                TEMPO_ENTRE_CHAMADAS_MIN,
+                TEMPO_ENTRE_CHAMADAS_MAX,
+            )
 
-            self._log("Conectando ao celular...", "info")
-            phone = PhoneController()
-            recorder = AudioRecorder()
+            # --- Conectar celular (com retry) ---
+            phone = None
+            recorder = None
+            tentativas_conexao = 0
 
-            self._log("Carregando Whisper (pode demorar)...", "info")
+            while self.rodando:
+                try:
+                    self._log("Conectando ao celular...", "info")
+                    phone = PhoneController()
+                    recorder = AudioRecorder()
+                    self._log("Celular conectado!", "pessoa")
+                    break
+                except Exception as e:
+                    tentativas_conexao += 1
+                    if tentativas_conexao >= MAX_RECONEXOES:
+                        self._log(f"Celular nao encontrado apos {MAX_RECONEXOES} tentativas.", "erro")
+                        self.rodando = False
+                        self.btn_iniciar.configure(text="INICIAR", fg_color="#e94560")
+                        self.lbl_status.configure(text="Erro: celular", text_color="#e57373")
+                        return
+                    self._log(f"Celular nao encontrado ({tentativas_conexao}/{MAX_RECONEXOES}). Tentando em 60s...", "nao")
+                    for _ in range(60):
+                        if not self.rodando:
+                            return
+                        time.sleep(1)
+
+            self._log("Carregando Whisper...", "info")
             carregar_modelo()
 
             self._log("Conectando a nuvem...", "info")
@@ -531,16 +560,54 @@ class App(ctk.CTk):
                 return
 
             self._log(
-                f"Conectado! {status.get('disponiveis', 0)} numeros disponiveis", "info"
+                f"Pronto! {status.get('disponiveis', 0)} numeros disponiveis", "info"
             )
 
+            erros_seguidos = 0
+
             while self.rodando:
-                # Pedir números
-                self._log(f"Pedindo {lote} numeros...", "info")
+                # --- Rejeitar chamada recebida se houver ---
+                try:
+                    if phone.rejeitar_chamada_recebida():
+                        self._log("Chamada recebida rejeitada", "nao")
+                        time.sleep(1)
+                except Exception:
+                    pass
+
+                # --- Verificar celular conectado ---
+                try:
+                    if not phone.esta_conectado():
+                        raise Exception("Celular desconectado")
+                except Exception:
+                    tentativas_conexao = 0
+                    while self.rodando:
+                        tentativas_conexao += 1
+                        if tentativas_conexao > MAX_RECONEXOES:
+                            self._log(f"Celular perdido apos {MAX_RECONEXOES} tentativas. Parando.", "erro")
+                            self.rodando = False
+                            break
+                        self._log(f"Celular desconectado. Reconectando ({tentativas_conexao}/{MAX_RECONEXOES})...", "nao")
+                        for _ in range(60):
+                            if not self.rodando:
+                                break
+                            time.sleep(1)
+                        try:
+                            phone = PhoneController()
+                            recorder = AudioRecorder()
+                            self._log("Reconectado!", "pessoa")
+                            erros_seguidos = 0
+                            break
+                        except Exception:
+                            continue
+                    if not self.rodando:
+                        break
+                    continue
+
+                # --- Pedir números ---
                 numeros = cloud.pedir_numeros(lote)
 
                 if not numeros:
-                    self._log("Sem numeros disponiveis. Aguardando 30s...", "info")
+                    self._log("Sem numeros. Aguardando 30s...", "info")
                     for _ in range(30):
                         if not self.rodando:
                             break
@@ -551,35 +618,39 @@ class App(ctk.CTk):
 
                 for i, num_info in enumerate(numeros, 1):
                     if not self.rodando:
-                        # Devolver pendentes
                         if pendentes:
                             cloud.devolver_numeros(pendentes)
                             self._log(f"Devolvidos {len(pendentes)} numeros", "info")
                         break
 
+                    # Rejeitar chamada recebida antes de discar
+                    try:
+                        phone.rejeitar_chamada_recebida()
+                    except Exception:
+                        pass
+
                     numero = num_info["numero"]
                     operadora = num_info.get("operadora", "?")
                     tentativa = num_info.get("tentativa", 1)
-                    tent_str = f" [tent.{tentativa}]" if tentativa > 1 else ""
+                    tent_str = f" [t{tentativa}]" if tentativa > 1 else ""
 
                     self._log(
-                        f"Discando {i}/{len(numeros)}: {numero} ({operadora}){tent_str}",
+                        f"{i}/{len(numeros)}: {numero} ({operadora}){tent_str}",
                         "info"
                     )
 
                     try:
-                        # Discar
                         numero_discar = numero
                         if len(numero) == 11 and numero.startswith("92"):
                             numero_discar = numero[2:]
 
                         phone.discar(numero_discar)
-                        time.sleep(2)
+                        time.sleep(1.5)
 
                         timestamp_inicio = time.time()
                         monitor = phone.monitorar_chamada(TEMPO_ESPERA_CHAMADA)
                         phone.encerrar_chamada()
-                        time.sleep(1)
+                        time.sleep(0.5)
 
                         call_log = phone.ler_call_log(numero_discar)
 
@@ -622,18 +693,25 @@ class App(ctk.CTk):
                         self._log(f"  >> {desc} ({conf:.0%})", tag)
                         self._atualizar_stats()
 
-                        # Enviar resultado
                         cloud.enviar_resultado(resultado)
 
                         if numero in pendentes:
                             pendentes.remove(numero)
 
+                        erros_seguidos = 0
+
                     except Exception as e:
+                        erros_seguidos += 1
                         self._log(f"  Erro: {e}", "erro")
 
-                    # Pausa
+                        if erros_seguidos >= 3:
+                            self._log("3 erros seguidos — verificando celular...", "erro")
+                            break  # Volta pro loop principal que verifica conexão
+
+                    # Pausa aleatória entre chamadas
                     if i < len(numeros) and self.rodando:
-                        time.sleep(TEMPO_ENTRE_CHAMADAS)
+                        pausa = random.uniform(TEMPO_ENTRE_CHAMADAS_MIN, TEMPO_ENTRE_CHAMADAS_MAX)
+                        time.sleep(pausa)
 
             self._log("Parado.", "info")
             self.lbl_status.configure(text="Parado", text_color="#888")

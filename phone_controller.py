@@ -82,9 +82,26 @@ class PhoneController:
 
     def silenciar_microfone(self):
         """Silencia o microfone durante a chamada sem aviso na tela."""
-        # Setar volume do microfone (stream 6 = voice call TX) para 0
         self._cmd(["shell", "media", "volume", "--stream", "6", "--set", "0"])
         logger.info("Microfone silenciado (volume TX = 0)")
+
+    def rejeitar_chamada_recebida(self):
+        """Se tiver chamada entrando (RINGING), rejeita e continua."""
+        estado = self.get_telecom_state()
+        if estado == "RINGING":
+            logger.info("Chamada recebida detectada — rejeitando...")
+            self._cmd(["shell", "input", "keyevent", "KEYCODE_ENDCALL"])
+            time.sleep(1)
+            return True
+        return False
+
+    def esta_conectado(self) -> bool:
+        """Verifica se o celular ainda está conectado via ADB."""
+        try:
+            output = self._cmd(["devices"], timeout=5)
+            return "\tdevice" in output
+        except Exception:
+            return False
 
     def encerrar_chamada(self):
         logger.info("Encerrando chamada...")
