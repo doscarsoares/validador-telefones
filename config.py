@@ -8,8 +8,8 @@ DEVICE_SERIAL = None  # None = usar primeiro dispositivo. Ou especificar: "XXXXX
 
 # === TEMPOS (em segundos) ===
 TEMPO_ESPERA_CHAMADA = 22      # Quanto tempo esperar antes de considerar "não atendeu"
-TEMPO_ENTRE_CHAMADAS_MIN = 2   # Pausa MÍNIMA entre ligações
-TEMPO_ENTRE_CHAMADAS_MAX = 5   # Pausa MÁXIMA entre ligações (aleatório entre min e max)
+TEMPO_ENTRE_CHAMADAS_MIN = 7   # Pausa MÍNIMA entre ligações
+TEMPO_ENTRE_CHAMADAS_MAX = 15  # Pausa MÁXIMA entre ligações (aleatório entre min e max)
 TEMPO_ENTRE_CHAMADAS = 3       # Fallback (usado se não usar aleatório)
 TEMPO_GRAVACAO_APOS_ATENDER = 4  # Segundos extras após detectar que atendeu
 TEMPO_TOQUE_MINIMO = 5         # Tempo mínimo de toque antes de considerar válido
