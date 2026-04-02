@@ -145,7 +145,7 @@ def processar_numero(
 
         if audio_path:
             audio_info = analisar_audio(audio_path)
-            if audio_info.get("tem_fala") or dialing_longo:
+            if audio_info.get("tem_fala") or dialing_longo or monitor.get("atendeu"):
                 # Transcrever se tem fala OU se DIALING foi longo (provável operadora)
                 transcricao = transcrever(audio_path)
                 logger.info(f"Transcrição: {transcricao[:80]}")

@@ -99,7 +99,7 @@ def processar_numero(numero_info, phone, recorder):
         audio_path = recorder.puxar_gravacao(numero_discar, timestamp_inicio)
         if audio_path:
             audio_info = analisar_audio(audio_path)
-            if audio_info.get("tem_fala") or dialing_longo:
+            if audio_info.get("tem_fala") or dialing_longo or monitor.get("atendeu"):
                 transcricao = transcrever(audio_path)
 
         # 6. Classificar
