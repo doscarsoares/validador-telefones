@@ -918,6 +918,76 @@ class App(ctk.CTk):
 
                 pendentes = [n["numero"] for n in numeros]
 
+                # --- Fila de processamento em background ---
+                from queue import Queue
+                fila_analise = Queue()
+
+                def worker_analise():
+                    """Thread que processa áudio/transcrição/classificação em background."""
+                    while True:
+                        item = fila_analise.get()
+                        if item is None:
+                            break  # Sinal pra parar
+
+                        try:
+                            num_info_w = item["num_info"]
+                            audio_path_w = item["audio_path"]
+                            monitor_w = item["monitor"]
+                            call_log_w = item["call_log"]
+
+                            numero_w = num_info_w["numero"]
+                            operadora_w = num_info_w.get("operadora", "?")
+                            tentativa_w = num_info_w.get("tentativa", 1)
+
+                            transcricao_w = ""
+                            audio_info_w = None
+                            dialing_longo_w = (
+                                monitor_w.get("tempo_ate_atender", 0)
+                                and monitor_w["tempo_ate_atender"] > 20
+                            )
+
+                            if audio_path_w:
+                                audio_info_w = analisar_audio(audio_path_w)
+                                if audio_info_w.get("tem_fala") or dialing_longo_w or monitor_w.get("atendeu"):
+                                    transcricao_w = transcrever(audio_path_w)
+
+                            resultado_w = classificar(transcricao_w, monitor_w, call_log_w, audio_info_w)
+                            resultado_w["numero"] = numero_w
+                            resultado_w["operadora"] = operadora_w
+                            resultado_w["tentativa"] = tentativa_w
+                            resultado_w["duracao_chamada"] = call_log_w.get("duration", 0)
+
+                            desc = resultado_w.get("descricao", "?")
+                            conf = resultado_w.get("confianca", 0)
+
+                            if "Pessoa" in desc:
+                                tag = "pessoa"
+                                self.total_atendeu += 1
+                            elif "Inexistente" in desc or "Bloqueado" in desc:
+                                tag = "descarte"
+                                self.total_descartados += 1
+                            else:
+                                tag = "nao"
+                                self.total_nao += 1
+
+                            self.total_discados += 1
+                            self._log(f"  >> {numero_w}: {desc} ({conf:.0%})", tag)
+                            self._atualizar_stats()
+
+                            cloud.enviar_resultado(resultado_w)
+
+                            if numero_w in pendentes:
+                                pendentes.remove(numero_w)
+
+                        except Exception as e:
+                            self._log(f"  Erro analise {item.get('num_info', {}).get('numero', '?')}: {e}", "erro")
+
+                        fila_analise.task_done()
+
+                # Iniciar worker
+                thread_worker = threading.Thread(target=worker_analise, daemon=True)
+                thread_worker.start()
+
                 for i, num_info in enumerate(numeros, 1):
                     if not self.rodando:
                         if pendentes:
@@ -925,7 +995,7 @@ class App(ctk.CTk):
                             self._log(f"Devolvidos {len(pendentes)} numeros", "info")
                         break
 
-                    # Rejeitar chamada recebida antes de discar
+                    # Rejeitar chamada recebida
                     try:
                         phone.rejeitar_chamada_recebida()
                     except Exception:
@@ -946,6 +1016,7 @@ class App(ctk.CTk):
                         if len(numero) == 11 and numero.startswith("92"):
                             numero_discar = numero[2:]
 
+                        # === LIGAR (parte sequencial) ===
                         phone.discar(numero_discar)
                         time.sleep(1.5)
 
@@ -956,49 +1027,16 @@ class App(ctk.CTk):
 
                         call_log = phone.ler_call_log(numero_discar)
 
-                        # Áudio
-                        transcricao = ""
-                        audio_info = None
-                        dialing_longo = (
-                            monitor.get("tempo_ate_atender", 0)
-                            and monitor["tempo_ate_atender"] > 20
-                        )
-
+                        # === PUXAR ÁUDIO (rápido) ===
                         audio_path = recorder.puxar_gravacao(numero_discar, timestamp_inicio)
-                        if audio_path:
-                            audio_info = analisar_audio(audio_path)
-                            if audio_info.get("tem_fala") or dialing_longo or monitor.get("atendeu"):
-                                transcricao = transcrever(audio_path)
 
-                        # Classificar
-                        resultado = classificar(transcricao, monitor, call_log, audio_info)
-                        resultado["numero"] = numero
-                        resultado["operadora"] = operadora
-                        resultado["tentativa"] = tentativa
-                        resultado["duracao_chamada"] = call_log.get("duration", 0)
-
-                        # Log com cor
-                        desc = resultado.get("descricao", "?")
-                        conf = resultado.get("confianca", 0)
-
-                        if "Pessoa" in desc:
-                            tag = "pessoa"
-                            self.total_atendeu += 1
-                        elif "Inexistente" in desc or "Bloqueado" in desc:
-                            tag = "descarte"
-                            self.total_descartados += 1
-                        else:
-                            tag = "nao"
-                            self.total_nao += 1
-
-                        self.total_discados += 1
-                        self._log(f"  >> {desc} ({conf:.0%})", tag)
-                        self._atualizar_stats()
-
-                        cloud.enviar_resultado(resultado)
-
-                        if numero in pendentes:
-                            pendentes.remove(numero)
+                        # === JOGAR NA FILA (análise em background) ===
+                        fila_analise.put({
+                            "num_info": num_info,
+                            "audio_path": audio_path,
+                            "monitor": monitor.copy(),
+                            "call_log": call_log.copy(),
+                        })
 
                         erros_seguidos = 0
 
@@ -1008,12 +1046,16 @@ class App(ctk.CTk):
 
                         if erros_seguidos >= 3:
                             self._log("3 erros seguidos — verificando celular...", "erro")
-                            break  # Volta pro loop principal que verifica conexão
+                            break
 
-                    # Pausa aleatória entre chamadas
+                    # Pausa aleatória (enquanto isso o worker analisa)
                     if i < len(numeros) and self.rodando:
                         pausa = random.uniform(TEMPO_ENTRE_CHAMADAS_MIN, TEMPO_ENTRE_CHAMADAS_MAX)
                         time.sleep(pausa)
+
+                # Esperar worker terminar o que falta na fila
+                fila_analise.put(None)  # Sinal de parada
+                thread_worker.join(timeout=120)
 
             self._log("Parado.", "info")
             self.lbl_status.configure(text="Parado", text_color="#888")
