@@ -1,5 +1,5 @@
 {
-    "versao": "2.0",
+    "versao": "2.1",
     "data": "2026-04-02",
     "url_padrao": "https://script.google.com/macros/s/AKfycbzIY-f0CACljinQLtuBQ8A3PcK7KKE9q81HP5MmXovzsbAtZwXJZ6fhs46A9cEwYu4jCQ/exec",
     "arquivos": [
@@ -15,6 +15,7 @@
         "excel_handler.py",
         "cloud_handler.py",
         "updater.py",
+        "scheduler.py",
         "version.json"
     ],
     "mensagem": ""

@@ -39,7 +39,9 @@ class App(ctk.CTk):
 
         # Estado
         self.rodando = False
+        self.modo_auto = False
         self.thread = None
+        self.thread_auto = None
         self.total_discados = 0
         self.total_atendeu = 0
         self.total_nao = 0
@@ -174,6 +176,26 @@ class App(ctk.CTk):
         )
         self.btn_iniciar.pack(fill="x", padx=15, pady=(10, 5))
 
+        # --- Modo Automático ---
+        auto_frame = ctk.CTkFrame(left, corner_radius=8, fg_color="#1a1a2e")
+        auto_frame.pack(fill="x", padx=15, pady=5)
+
+        self.auto_var = ctk.BooleanVar(value=False)
+        self.chk_auto = ctk.CTkCheckBox(
+            auto_frame, text="Modo Automatico Semanal",
+            font=(FONT_FAMILY, 11), variable=self.auto_var,
+            command=self._toggle_modo_auto,
+            checkbox_width=20, checkbox_height=20,
+        )
+        self.chk_auto.pack(padx=10, pady=(8, 2))
+
+        self.lbl_horario = ctk.CTkLabel(
+            auto_frame, text="Seg-Sex 8h-18h | Sab-Dom 9h-18h",
+            font=(FONT_FAMILY, 9), text_color="#666"
+        )
+        self.lbl_horario.pack(padx=10, pady=(0, 8))
+
+        # --- Outros botões ---
         self.btn_status = ctk.CTkButton(
             left, text="Ver Status Nuvem", font=(FONT_FAMILY, 11),
             height=35, corner_radius=8, fg_color="#16213e",
@@ -308,6 +330,89 @@ class App(ctk.CTk):
                 self.btn_atualizar.configure(state="normal", text="Verificar Atualizações")
 
         threading.Thread(target=check, daemon=True).start()
+
+    # ================================================================
+    #  MODO AUTOMÁTICO SEMANAL
+    # ================================================================
+
+    def _toggle_modo_auto(self):
+        if self.auto_var.get():
+            self.modo_auto = True
+            self._log("Modo automatico ATIVADO", "info")
+            self._log("Seg-Sex 8h-18h | Sab-Dom 9h-18h (horario Manaus)", "info")
+
+            # Iniciar thread do agendador
+            self.thread_auto = threading.Thread(target=self._loop_agendador, daemon=True)
+            self.thread_auto.start()
+        else:
+            self.modo_auto = False
+            self._log("Modo automatico DESATIVADO", "info")
+            # Se estiver rodando, para
+            if self.rodando:
+                self.rodando = False
+
+    def _loop_agendador(self):
+        """Loop que verifica o horário e inicia/para as ligações."""
+        from scheduler import esta_no_horario, status_horario
+
+        estava_no_horario = False
+
+        while self.modo_auto:
+            no_horario = esta_no_horario()
+            status = status_horario()
+
+            if no_horario and not self.rodando:
+                # Horário de trabalho começou → iniciar
+                self._log(
+                    f"Horario de trabalho ({status['inicio']}-{status['fim']}) — Iniciando ligacoes...",
+                    "pessoa"
+                )
+                self.lbl_horario.configure(
+                    text=f"ATIVO ate {status['fim']} | Para {status['tempo_ate_parar']}",
+                    text_color="#81c784"
+                )
+                # Simular clique no INICIAR
+                self.after(0, self._iniciar_se_parado)
+                estava_no_horario = True
+
+            elif not no_horario and self.rodando and estava_no_horario:
+                # Horário de trabalho acabou → parar
+                self._log(
+                    f"Fora do horario ({status['hora_atual']}) — Parando ligacoes...",
+                    "nao"
+                )
+                self._log(f"Proximo inicio: {status['proximo_inicio']}", "info")
+                self.lbl_horario.configure(
+                    text=f"PAUSADO | Proximo: {status['proximo_inicio']}",
+                    text_color="#ffb74d"
+                )
+                self.rodando = False
+                estava_no_horario = False
+
+            elif not no_horario and not self.rodando:
+                # Fora do horário, parado — atualizar label
+                self.lbl_horario.configure(
+                    text=f"Aguardando... Inicio: {status['proximo_inicio']}",
+                    text_color="#888"
+                )
+
+            elif no_horario and self.rodando:
+                # No horário e rodando — atualizar tempo restante
+                self.lbl_horario.configure(
+                    text=f"ATIVO ate {status['fim']} | Para {status['tempo_ate_parar']}",
+                    text_color="#81c784"
+                )
+
+            # Checar a cada 30 segundos
+            for _ in range(30):
+                if not self.modo_auto:
+                    return
+                time.sleep(1)
+
+    def _iniciar_se_parado(self):
+        """Inicia as ligações se não estiver rodando."""
+        if not self.rodando:
+            self._toggle_execucao()
 
     # ================================================================
     #  CELULAR
