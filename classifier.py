@@ -77,25 +77,22 @@ def classificar(transcricao: str, monitor: dict, call_log: dict, audio_info: dic
     # Única forma de ser PESSOA: precisa de ACTIVE + fala real
     # E o texto não pode ser lixo do Whisper (operadora incompreensível)
     # =====================================================
-    if atendeu and tem_fala:
-        # ACTIVE + fala + nenhum padrão de operadora bateu (passo 1 já checou)
-        # Se o Whisper não reconheceu como operadora, assumir PESSOA.
-        # É mais seguro: falso positivo de pessoa → vai pra aba "Atendeu"
-        # e o usuário confere. Falso negativo (perder pessoa real) é pior.
+    if atendeu and (tem_fala or texto):
+        # ACTIVE + (fala detectada OU Whisper transcreveu algo)
+        # Se não bateu padrão de operadora no passo 1, é PESSOA.
         if texto:
             return _resultado("PESSOA_ATENDEU", 0.75,
-                              f"(ACTIVE + fala sem padrao operadora: '{texto[:50]}')", transcricao)
+                              f"(ACTIVE + audio: '{texto[:50]}')", transcricao)
         else:
             return _resultado("PESSOA_ATENDEU", 0.65,
                               "(ACTIVE + fala sem transcrição)", transcricao)
 
     # =====================================================
-    # PASSO 5: ACTIVE + silêncio total = INCERTO
+    # PASSO 5: ACTIVE + silêncio total + sem transcrição = INCERTO
+    # Nenhuma fala detectada E Whisper não transcreveu nada.
     # Pode ser pessoa calada OU número inválido (1 bip e nada)
-    # Mandar pra "Tentar Novamente" — se 3x seguidas der silêncio,
-    # é inválido e será descartado.
     # =====================================================
-    if atendeu and not tem_fala:
+    if atendeu and not tem_fala and not texto:
         return _resultado("SILENCIO_INCERTO", 0.50,
                           "(ACTIVE + silencio total — tentar novamente)", transcricao)
 
