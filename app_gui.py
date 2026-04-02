@@ -233,12 +233,41 @@ class App(ctk.CTk):
             lbl.pack(side="right")
             self.stats[key] = lbl
 
-        # Coluna direita — Log
+        # Coluna direita — Manual + Log
         right = ctk.CTkFrame(container, corner_radius=12)
         right.pack(side="right", fill="both", expand=True)
 
+        # --- Ligação Manual / Importar ---
+        manual_frame = ctk.CTkFrame(right, corner_radius=8, fg_color="#1a1a2e")
+        manual_frame.pack(fill="x", padx=15, pady=(15, 5))
+
+        row_manual = ctk.CTkFrame(manual_frame, fg_color="transparent")
+        row_manual.pack(fill="x", padx=10, pady=8)
+
+        self.entry_numero = ctk.CTkEntry(
+            row_manual, font=(FONT_FAMILY, 12),
+            placeholder_text="Digitar numero: (92) 9 9999-9999",
+            corner_radius=8
+        )
+        self.entry_numero.pack(side="left", fill="x", expand=True, padx=(0, 5))
+
+        self.btn_ligar = ctk.CTkButton(
+            row_manual, text="Ligar", font=(FONT_FAMILY, 11, "bold"),
+            width=70, corner_radius=8, fg_color="#e94560",
+            hover_color="#c81e45", command=self._ligar_manual
+        )
+        self.btn_ligar.pack(side="left", padx=(0, 5))
+
+        self.btn_importar = ctk.CTkButton(
+            row_manual, text="Importar Lista", font=(FONT_FAMILY, 10),
+            width=100, corner_radius=8, fg_color="#16213e",
+            hover_color="#0f3460", command=self._importar_lista
+        )
+        self.btn_importar.pack(side="left")
+
+        # --- Log ---
         ctk.CTkLabel(right, text="LOG DE LIGACOES", font=(FONT_FAMILY, 11, "bold"),
-                     text_color="#888").pack(padx=15, pady=(15, 5), anchor="w")
+                     text_color="#888").pack(padx=15, pady=(5, 5), anchor="w")
 
         self.log_text = ctk.CTkTextbox(right, font=(FONT_FALLBACK, 11),
                                         corner_radius=8, state="disabled",
@@ -330,6 +359,279 @@ class App(ctk.CTk):
                 self.btn_atualizar.configure(state="normal", text="Verificar Atualizações")
 
         threading.Thread(target=check, daemon=True).start()
+
+    # ================================================================
+    #  LIGAÇÃO MANUAL / IMPORTAR LISTA
+    # ================================================================
+
+    def _limpar_numero(self, numero: str) -> str:
+        """Remove formatação: (92) 9 9999-9999 → 92999999999"""
+        import re
+        return re.sub(r"[^\d]", "", numero)
+
+    def _ligar_manual(self):
+        """Liga para um número digitado manualmente."""
+        numero_raw = self.entry_numero.get().strip()
+        if not numero_raw:
+            self._log("Digite um numero primeiro!", "erro")
+            return
+
+        numero = self._limpar_numero(numero_raw)
+        if len(numero) < 9:
+            self._log(f"Numero invalido: {numero_raw}", "erro")
+            return
+
+        # Adicionar DDD 92 se não tiver
+        if len(numero) == 9:
+            numero = "92" + numero
+
+        self.entry_numero.delete(0, "end")
+        self._log(f"Ligacao manual: {numero}", "info")
+
+        threading.Thread(
+            target=self._processar_numero_manual,
+            args=(numero,),
+            daemon=True
+        ).start()
+
+    def _processar_numero_manual(self, numero):
+        """Processa uma ligação manual em thread separada."""
+        try:
+            from phone_controller import PhoneController
+            from audio_recorder import AudioRecorder
+            from audio_analyzer import analisar_audio
+            from transcriber import transcrever, carregar_modelo
+            from classifier import classificar
+            from config import TEMPO_ESPERA_CHAMADA
+
+            phone = PhoneController()
+            recorder = AudioRecorder()
+            carregar_modelo()
+
+            numero_discar = numero
+            if len(numero) == 11 and numero.startswith("92"):
+                numero_discar = numero[2:]
+
+            phone.discar(numero_discar)
+            time.sleep(1.5)
+
+            timestamp_inicio = time.time()
+            monitor = phone.monitorar_chamada(TEMPO_ESPERA_CHAMADA)
+            phone.encerrar_chamada()
+            time.sleep(0.5)
+
+            call_log = phone.ler_call_log(numero_discar)
+
+            transcricao = ""
+            audio_info = None
+            dialing_longo = (
+                monitor.get("tempo_ate_atender", 0)
+                and monitor["tempo_ate_atender"] > 20
+            )
+            audio_path = recorder.puxar_gravacao(numero_discar, timestamp_inicio)
+            if audio_path:
+                audio_info = analisar_audio(audio_path)
+                if audio_info.get("tem_fala") or dialing_longo:
+                    transcricao = transcrever(audio_path)
+
+            resultado = classificar(transcricao, monitor, call_log, audio_info)
+            resultado["numero"] = numero
+            resultado["operadora"] = "MANUAL"
+            resultado["tentativa"] = 1
+            resultado["duracao_chamada"] = call_log.get("duration", 0)
+
+            desc = resultado.get("descricao", "?")
+            conf = resultado.get("confianca", 0)
+            tag = "pessoa" if "Pessoa" in desc else "nao" if "Inexistente" not in desc and "Bloqueado" not in desc else "descarte"
+            self._log(f"  >> {desc} ({conf:.0%})", tag)
+
+            # Enviar pra nuvem
+            url = self.entry_url.get("1.0", "end").strip()
+            cel = self.entry_cel.get().strip() or "celular1"
+            if url:
+                try:
+                    from cloud_handler import CloudHandler
+                    cloud = CloudHandler(url, cel)
+                    cloud.enviar_resultado(resultado)
+                    self._log("  Resultado enviado pra nuvem", "info")
+                except Exception:
+                    self._log("  Nao enviou pra nuvem (sem conexao?)", "nao")
+
+            self.total_discados += 1
+            if "Pessoa" in desc:
+                self.total_atendeu += 1
+            elif "Inexistente" in desc or "Bloqueado" in desc:
+                self.total_descartados += 1
+            else:
+                self.total_nao += 1
+            self._atualizar_stats()
+
+        except Exception as e:
+            self._log(f"Erro na ligacao manual: {e}", "erro")
+
+    def _importar_lista(self):
+        """Importa uma lista de números de um arquivo Excel/CSV."""
+        from tkinter import filedialog
+
+        filepath = filedialog.askopenfilename(
+            title="Selecionar lista de numeros",
+            filetypes=[
+                ("Excel", "*.xlsx *.xls"),
+                ("CSV", "*.csv"),
+                ("Texto", "*.txt"),
+                ("Todos", "*.*"),
+            ],
+        )
+
+        if not filepath:
+            return
+
+        self._log(f"Importando: {os.path.basename(filepath)}", "info")
+
+        threading.Thread(
+            target=self._processar_lista,
+            args=(filepath,),
+            daemon=True
+        ).start()
+
+    def _processar_lista(self, filepath):
+        """Processa uma lista importada de números."""
+        import re
+        import random
+
+        numeros = []
+
+        try:
+            if filepath.endswith((".xlsx", ".xls")):
+                from excel_handler import ler_numeros
+                raw = ler_numeros(filepath)
+                numeros = [n["numero"] for n in raw]
+            elif filepath.endswith(".csv"):
+                with open(filepath, "r", encoding="utf-8") as f:
+                    for line in f:
+                        num = re.sub(r"[^\d]", "", line.strip())
+                        if len(num) >= 9:
+                            numeros.append(num)
+            else:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    for line in f:
+                        num = re.sub(r"[^\d]", "", line.strip())
+                        if len(num) >= 9:
+                            numeros.append(num)
+        except Exception as e:
+            self._log(f"Erro lendo arquivo: {e}", "erro")
+            return
+
+        if not numeros:
+            self._log("Nenhum numero encontrado no arquivo!", "erro")
+            return
+
+        # Adicionar DDD 92 se necessário
+        numeros_formatados = []
+        for n in numeros:
+            if len(n) == 9:
+                n = "92" + n
+            numeros_formatados.append(n)
+
+        self._log(f"Encontrados {len(numeros_formatados)} numeros. Iniciando ligacoes...", "info")
+
+        try:
+            from phone_controller import PhoneController
+            from audio_recorder import AudioRecorder
+            from audio_analyzer import analisar_audio
+            from transcriber import transcrever, carregar_modelo
+            from classifier import classificar
+            from config import TEMPO_ESPERA_CHAMADA, TEMPO_ENTRE_CHAMADAS_MIN, TEMPO_ENTRE_CHAMADAS_MAX
+
+            phone = PhoneController()
+            recorder = AudioRecorder()
+            carregar_modelo()
+
+            url = self.entry_url.get("1.0", "end").strip()
+            cel = self.entry_cel.get().strip() or "celular1"
+            cloud = None
+            if url:
+                from cloud_handler import CloudHandler
+                cloud = CloudHandler(url, cel)
+
+            for i, numero in enumerate(numeros_formatados, 1):
+                if not self.rodando and i > 1:
+                    # Permitir parar via botão PARAR (se ativado durante a lista)
+                    pass
+
+                # Rejeitar chamada recebida
+                try:
+                    phone.rejeitar_chamada_recebida()
+                except Exception:
+                    pass
+
+                self._log(f"Lista {i}/{len(numeros_formatados)}: {numero}", "info")
+
+                try:
+                    numero_discar = numero
+                    if len(numero) == 11 and numero.startswith("92"):
+                        numero_discar = numero[2:]
+
+                    phone.discar(numero_discar)
+                    time.sleep(1.5)
+
+                    timestamp_inicio = time.time()
+                    monitor = phone.monitorar_chamada(TEMPO_ESPERA_CHAMADA)
+                    phone.encerrar_chamada()
+                    time.sleep(0.5)
+
+                    call_log = phone.ler_call_log(numero_discar)
+
+                    transcricao = ""
+                    audio_info = None
+                    dialing_longo = (
+                        monitor.get("tempo_ate_atender", 0)
+                        and monitor["tempo_ate_atender"] > 20
+                    )
+                    audio_path = recorder.puxar_gravacao(numero_discar, timestamp_inicio)
+                    if audio_path:
+                        audio_info = analisar_audio(audio_path)
+                        if audio_info.get("tem_fala") or dialing_longo:
+                            transcricao = transcrever(audio_path)
+
+                    resultado = classificar(transcricao, monitor, call_log, audio_info)
+                    resultado["numero"] = numero
+                    resultado["operadora"] = "LISTA"
+                    resultado["tentativa"] = 1
+                    resultado["duracao_chamada"] = call_log.get("duration", 0)
+
+                    desc = resultado.get("descricao", "?")
+                    conf = resultado.get("confianca", 0)
+                    tag = "pessoa" if "Pessoa" in desc else "nao" if "Inexistente" not in desc and "Bloqueado" not in desc else "descarte"
+                    self._log(f"  >> {desc} ({conf:.0%})", tag)
+
+                    if cloud:
+                        try:
+                            cloud.enviar_resultado(resultado)
+                        except Exception:
+                            pass
+
+                    self.total_discados += 1
+                    if "Pessoa" in desc:
+                        self.total_atendeu += 1
+                    elif "Inexistente" in desc or "Bloqueado" in desc:
+                        self.total_descartados += 1
+                    else:
+                        self.total_nao += 1
+                    self._atualizar_stats()
+
+                except Exception as e:
+                    self._log(f"  Erro: {e}", "erro")
+
+                # Pausa aleatória
+                if i < len(numeros_formatados):
+                    pausa = random.uniform(TEMPO_ENTRE_CHAMADAS_MIN, TEMPO_ENTRE_CHAMADAS_MAX)
+                    time.sleep(pausa)
+
+            self._log(f"Lista concluida! {len(numeros_formatados)} numeros processados.", "pessoa")
+
+        except Exception as e:
+            self._log(f"Erro processando lista: {e}", "erro")
 
     # ================================================================
     #  MODO AUTOMÁTICO SEMANAL
