@@ -1,0 +1,552 @@
+#!/usr/bin/env python3
+"""
+Validador de Telefones — Interface Gráfica Moderna
+"""
+
+import os
+import sys
+import json
+import time
+import logging
+import threading
+from datetime import datetime
+
+import customtkinter as ctk
+
+# Configurar tema
+ctk.set_appearance_mode("dark")
+ctk.set_default_color_theme("blue")
+
+# Carregar Montserrat se disponível
+FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
+FONT_FAMILY = "Montserrat"
+FONT_FALLBACK = "Segoe UI"
+
+# URL padrão do Google Sheets
+URL_PADRAO = "https://script.google.com/macros/s/AKfycbzIY-f0CACljinQLtuBQ8A3PcK7KKE9q81HP5MmXovzsbAtZwXJZ6fhs46A9cEwYu4jCQ/exec"
+
+
+class App(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+
+        self.title("Validador de Telefones")
+        self.geometry("900x650")
+        self.minsize(800, 600)
+
+        # Ícone da janela e taskbar
+        self._setar_icone()
+
+        # Estado
+        self.rodando = False
+        self.thread = None
+        self.total_discados = 0
+        self.total_atendeu = 0
+        self.total_nao = 0
+        self.total_descartados = 0
+
+        # Carregar URL salva
+        self.url_file = os.path.join(os.path.dirname(__file__), ".cloud_url")
+        self.cel_file = os.path.join(os.path.dirname(__file__), ".celular_nome")
+        self.url_salva = self._ler_arquivo(self.url_file)
+        self.cel_salvo = self._ler_arquivo(self.cel_file) or "celular1"
+
+        self._criar_interface()
+        self._verificar_celular()
+
+    def _setar_icone(self):
+        """Seta o ícone da janela e da taskbar/dock em todos os OS."""
+        base = os.path.dirname(__file__)
+        png_path = os.path.join(base, "Icone_validador.png")
+        icns_path = os.path.join(base, "Icone_validador.icns")
+
+        try:
+            if sys.platform == "darwin":
+                # Mac: usar .icns pro dock
+                if os.path.exists(icns_path):
+                    # Setar ícone do dock via tkinter
+                    from PIL import Image, ImageTk
+                    img = Image.open(png_path)
+                    self._icon_image = ImageTk.PhotoImage(img)
+                    self.iconphoto(True, self._icon_image)
+                elif os.path.exists(png_path):
+                    from PIL import Image, ImageTk
+                    img = Image.open(png_path)
+                    self._icon_image = ImageTk.PhotoImage(img)
+                    self.iconphoto(True, self._icon_image)
+            else:
+                # Linux/Windows: usar .png
+                if os.path.exists(png_path):
+                    from PIL import Image, ImageTk
+                    img = Image.open(png_path)
+                    self._icon_image = ImageTk.PhotoImage(img)
+                    self.iconphoto(True, self._icon_image)
+        except Exception:
+            # Fallback: tentar sem PIL (tkinter puro, só suporta .png/.gif)
+            try:
+                if os.path.exists(png_path):
+                    icon = ctk.CTkImage(light_image=None, dark_image=None)
+                    # tkinter PhotoImage direto
+                    import tkinter as tk
+                    self._icon_image = tk.PhotoImage(file=png_path)
+                    self.iconphoto(True, self._icon_image)
+            except Exception:
+                pass
+
+    def _ler_arquivo(self, path):
+        try:
+            with open(path, "r") as f:
+                return f.read().strip()
+        except FileNotFoundError:
+            return ""
+
+    def _salvar_arquivo(self, path, conteudo):
+        with open(path, "w") as f:
+            f.write(conteudo)
+
+    # ================================================================
+    #  INTERFACE
+    # ================================================================
+
+    def _criar_interface(self):
+        # Header
+        header = ctk.CTkFrame(self, height=70, corner_radius=0, fg_color="#1a1a2e")
+        header.pack(fill="x")
+        header.pack_propagate(False)
+
+        ctk.CTkLabel(
+            header, text="Validador de Telefones",
+            font=(FONT_FAMILY, 22, "bold"), text_color="#e94560"
+        ).pack(side="left", padx=20, pady=15)
+
+        self.lbl_status = ctk.CTkLabel(
+            header, text="Parado",
+            font=(FONT_FAMILY, 13), text_color="#888"
+        )
+        self.lbl_status.pack(side="right", padx=20)
+
+        # Container principal
+        container = ctk.CTkFrame(self, fg_color="transparent")
+        container.pack(fill="both", expand=True, padx=15, pady=10)
+
+        # Coluna esquerda — Configuração + Controles
+        left = ctk.CTkFrame(container, width=300, corner_radius=12)
+        left.pack(side="left", fill="y", padx=(0, 10))
+        left.pack_propagate(False)
+
+        # --- Configuração ---
+        ctk.CTkLabel(left, text="CONFIGURACAO", font=(FONT_FAMILY, 11, "bold"),
+                     text_color="#888").pack(padx=15, pady=(15, 5), anchor="w")
+
+        # URL da nuvem
+        ctk.CTkLabel(left, text="URL Google Apps Script:",
+                     font=(FONT_FAMILY, 11)).pack(padx=15, pady=(5, 0), anchor="w")
+        self.entry_url = ctk.CTkTextbox(left, height=60, font=(FONT_FALLBACK, 10),
+                                         corner_radius=8)
+        self.entry_url.pack(fill="x", padx=15, pady=5)
+        # Prioridade: URL salva > URL padrão
+        url_inicial = self.url_salva or URL_PADRAO
+        self.entry_url.insert("1.0", url_inicial)
+
+        # Nome do celular
+        ctk.CTkLabel(left, text="Nome do celular:",
+                     font=(FONT_FAMILY, 11)).pack(padx=15, pady=(5, 0), anchor="w")
+        self.entry_cel = ctk.CTkEntry(left, font=(FONT_FAMILY, 12),
+                                       placeholder_text="ex: cel1", corner_radius=8)
+        self.entry_cel.pack(fill="x", padx=15, pady=5)
+        self.entry_cel.insert(0, self.cel_salvo)
+
+        # (Lote fixo em 10, roda sem parar)
+
+        # --- Status Celular ---
+        self.frame_cel = ctk.CTkFrame(left, corner_radius=8, fg_color="#1a1a2e")
+        self.frame_cel.pack(fill="x", padx=15, pady=10)
+
+        self.lbl_cel = ctk.CTkLabel(self.frame_cel, text="Celular: verificando...",
+                                     font=(FONT_FAMILY, 11), text_color="#888")
+        self.lbl_cel.pack(padx=10, pady=8)
+
+        # --- Botões ---
+        self.btn_iniciar = ctk.CTkButton(
+            left, text="INICIAR", font=(FONT_FAMILY, 14, "bold"),
+            height=45, corner_radius=10, fg_color="#e94560",
+            hover_color="#c81e45", command=self._toggle_execucao
+        )
+        self.btn_iniciar.pack(fill="x", padx=15, pady=(10, 5))
+
+        self.btn_status = ctk.CTkButton(
+            left, text="Ver Status Nuvem", font=(FONT_FAMILY, 11),
+            height=35, corner_radius=8, fg_color="#16213e",
+            hover_color="#0f3460", command=self._ver_status
+        )
+        self.btn_status.pack(fill="x", padx=15, pady=5)
+
+        self.btn_atualizar = ctk.CTkButton(
+            left, text="Verificar Atualizações", font=(FONT_FAMILY, 11),
+            height=35, corner_radius=8, fg_color="#16213e",
+            hover_color="#0f3460", command=self._verificar_atualizacao
+        )
+        self.btn_atualizar.pack(fill="x", padx=15, pady=5)
+
+        # --- Estatísticas ---
+        ctk.CTkLabel(left, text="ESTATISTICAS", font=(FONT_FAMILY, 11, "bold"),
+                     text_color="#888").pack(padx=15, pady=(15, 5), anchor="w")
+
+        stats_frame = ctk.CTkFrame(left, corner_radius=8, fg_color="#1a1a2e")
+        stats_frame.pack(fill="x", padx=15, pady=5)
+
+        self.stats = {}
+        for label, key, color in [
+            ("Discados", "discados", "#4fc3f7"),
+            ("Atendeu", "atendeu", "#81c784"),
+            ("Nao Atendeu", "nao", "#ffb74d"),
+            ("Descartados", "desc", "#e57373"),
+        ]:
+            row = ctk.CTkFrame(stats_frame, fg_color="transparent")
+            row.pack(fill="x", padx=10, pady=3)
+            ctk.CTkLabel(row, text=label, font=(FONT_FAMILY, 11),
+                         text_color="#aaa").pack(side="left")
+            lbl = ctk.CTkLabel(row, text="0", font=(FONT_FAMILY, 14, "bold"),
+                               text_color=color)
+            lbl.pack(side="right")
+            self.stats[key] = lbl
+
+        # Coluna direita — Log
+        right = ctk.CTkFrame(container, corner_radius=12)
+        right.pack(side="right", fill="both", expand=True)
+
+        ctk.CTkLabel(right, text="LOG DE LIGACOES", font=(FONT_FAMILY, 11, "bold"),
+                     text_color="#888").pack(padx=15, pady=(15, 5), anchor="w")
+
+        self.log_text = ctk.CTkTextbox(right, font=(FONT_FALLBACK, 11),
+                                        corner_radius=8, state="disabled",
+                                        fg_color="#0d0d0d")
+        self.log_text.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+
+        # Tags de cor
+        self.log_text._textbox.tag_config("pessoa", foreground="#81c784")
+        self.log_text._textbox.tag_config("nao", foreground="#ffb74d")
+        self.log_text._textbox.tag_config("descarte", foreground="#e57373")
+        self.log_text._textbox.tag_config("info", foreground="#4fc3f7")
+        self.log_text._textbox.tag_config("erro", foreground="#e57373")
+
+    # ================================================================
+    #  LOG
+    # ================================================================
+
+    def _log(self, msg, tag="info"):
+        hora = datetime.now().strftime("%H:%M:%S")
+        self.log_text.configure(state="normal")
+        self.log_text._textbox.insert("end", f"[{hora}] {msg}\n", tag)
+        self.log_text._textbox.see("end")
+        self.log_text.configure(state="disabled")
+
+    # ================================================================
+    #  ATUALIZAÇÕES
+    # ================================================================
+
+    def _verificar_atualizacao(self):
+        self.btn_atualizar.configure(state="disabled", text="Verificando...")
+
+        def check():
+            try:
+                from updater import verificar_atualizacao, aplicar_atualizacao
+
+                info = verificar_atualizacao()
+
+                if info.get("erro"):
+                    self._log(f"Erro: {info.get('mensagem')}", "erro")
+                    self.btn_atualizar.configure(state="normal", text="Verificar Atualizações")
+                    return
+
+                if not info.get("disponivel"):
+                    self._log(f"Voce ja tem a versao mais recente ({info.get('versao_local')})", "info")
+                    self.btn_atualizar.configure(state="normal", text="Verificar Atualizações")
+                    return
+
+                # Tem atualização!
+                self._log(
+                    f"Atualizacao disponivel: v{info.get('versao_remota')} "
+                    f"(voce tem v{info.get('versao_local')})",
+                    "pessoa"
+                )
+                if info.get("mensagem"):
+                    self._log(f"  {info['mensagem']}", "info")
+
+                self.btn_atualizar.configure(text="Atualizando...")
+
+                # Aplicar
+                def progresso(pct, msg):
+                    self.btn_atualizar.configure(
+                        text=f"Atualizando... {int(pct*100)}%"
+                    )
+
+                resultado = aplicar_atualizacao(callback=progresso)
+
+                if resultado.get("sucesso"):
+                    self._log(
+                        f"Atualizado para v{resultado.get('versao')}! "
+                        f"({resultado.get('atualizados')} arquivos)",
+                        "pessoa"
+                    )
+
+                    # Atualizar URL se mudou
+                    nova_url = resultado.get("url_padrao")
+                    if nova_url:
+                        self.entry_url.delete("1.0", "end")
+                        self.entry_url.insert("1.0", nova_url)
+                        self._log("URL atualizada automaticamente", "info")
+
+                    self._log("Reinicie o programa para aplicar todas as mudancas.", "info")
+                else:
+                    erros = resultado.get("erros", [])
+                    self._log(f"Atualizacao com erros: {erros[:3]}", "erro")
+
+            except Exception as e:
+                self._log(f"Erro na atualizacao: {e}", "erro")
+            finally:
+                self.btn_atualizar.configure(state="normal", text="Verificar Atualizações")
+
+        threading.Thread(target=check, daemon=True).start()
+
+    # ================================================================
+    #  CELULAR
+    # ================================================================
+
+    def _verificar_celular(self):
+        def check():
+            try:
+                import subprocess
+                result = subprocess.run(
+                    ["adb", "devices"], capture_output=True, text=True, timeout=5
+                )
+                lines = [l for l in result.stdout.split("\n") if "\tdevice" in l]
+                if lines:
+                    device_id = lines[0].split("\t")[0]
+                    self.lbl_cel.configure(
+                        text=f"Celular: {device_id}", text_color="#81c784"
+                    )
+                else:
+                    self.lbl_cel.configure(
+                        text="Celular: nao detectado", text_color="#e57373"
+                    )
+            except Exception:
+                self.lbl_cel.configure(
+                    text="Celular: ADB nao encontrado", text_color="#e57373"
+                )
+        threading.Thread(target=check, daemon=True).start()
+
+    # ================================================================
+    #  STATUS NUVEM
+    # ================================================================
+
+    def _ver_status(self):
+        url = self.entry_url.get("1.0", "end").strip()
+        if not url:
+            self._log("Configure a URL primeiro!", "erro")
+            return
+
+        def fetch():
+            try:
+                from cloud_handler import CloudHandler
+                cloud = CloudHandler(url, "status")
+                status = cloud.get_status()
+                if status.get("erro"):
+                    self._log(f"Erro: {status.get('mensagem')}", "erro")
+                    return
+
+                self._log(
+                    f"Nuvem: {status.get('disponiveis', 0)} disponiveis | "
+                    f"{status.get('tentar_novamente', 0)} p/ religar | "
+                    f"{status.get('atendeu', 0)} atendeu | "
+                    f"{status.get('descartados', 0)} descartados",
+                    "info"
+                )
+            except Exception as e:
+                self._log(f"Erro ao consultar nuvem: {e}", "erro")
+
+        threading.Thread(target=fetch, daemon=True).start()
+
+    # ================================================================
+    #  INICIAR / PARAR
+    # ================================================================
+
+    def _toggle_execucao(self):
+        if self.rodando:
+            self.rodando = False
+            self.btn_iniciar.configure(text="INICIAR", fg_color="#e94560")
+            self.lbl_status.configure(text="Parando...", text_color="#ffb74d")
+        else:
+            url = self.entry_url.get("1.0", "end").strip()
+            cel = self.entry_cel.get().strip() or "celular1"
+            lote = 10
+
+            if not url:
+                self._log("Configure a URL do Google Apps Script!", "erro")
+                return
+
+            # Salvar config
+            self._salvar_arquivo(self.url_file, url)
+            self._salvar_arquivo(self.cel_file, cel)
+
+            self.rodando = True
+            self.btn_iniciar.configure(text="PARAR", fg_color="#c62828")
+            self.lbl_status.configure(text="Executando...", text_color="#81c784")
+
+            self.thread = threading.Thread(
+                target=self._executar, args=(url, cel, lote), daemon=True
+            )
+            self.thread.start()
+
+    def _executar(self, url, celular, lote):
+        try:
+            from phone_controller import PhoneController
+            from audio_recorder import AudioRecorder
+            from audio_analyzer import analisar_audio
+            from transcriber import transcrever, carregar_modelo
+            from classifier import classificar
+            from cloud_handler import CloudHandler
+            from config import TEMPO_ESPERA_CHAMADA, TEMPO_ENTRE_CHAMADAS
+
+            self._log("Conectando ao celular...", "info")
+            phone = PhoneController()
+            recorder = AudioRecorder()
+
+            self._log("Carregando Whisper (pode demorar)...", "info")
+            carregar_modelo()
+
+            self._log("Conectando a nuvem...", "info")
+            cloud = CloudHandler(url, celular)
+
+            status = cloud.get_status()
+            if status.get("erro"):
+                self._log(f"Erro na nuvem: {status.get('mensagem')}", "erro")
+                self.rodando = False
+                self.btn_iniciar.configure(text="INICIAR", fg_color="#e94560")
+                return
+
+            self._log(
+                f"Conectado! {status.get('disponiveis', 0)} numeros disponiveis", "info"
+            )
+
+            while self.rodando:
+                # Pedir números
+                self._log(f"Pedindo {lote} numeros...", "info")
+                numeros = cloud.pedir_numeros(lote)
+
+                if not numeros:
+                    self._log("Sem numeros disponiveis. Aguardando 30s...", "info")
+                    for _ in range(30):
+                        if not self.rodando:
+                            break
+                        time.sleep(1)
+                    continue
+
+                pendentes = [n["numero"] for n in numeros]
+
+                for i, num_info in enumerate(numeros, 1):
+                    if not self.rodando:
+                        # Devolver pendentes
+                        if pendentes:
+                            cloud.devolver_numeros(pendentes)
+                            self._log(f"Devolvidos {len(pendentes)} numeros", "info")
+                        break
+
+                    numero = num_info["numero"]
+                    operadora = num_info.get("operadora", "?")
+                    tentativa = num_info.get("tentativa", 1)
+                    tent_str = f" [tent.{tentativa}]" if tentativa > 1 else ""
+
+                    self._log(
+                        f"Discando {i}/{len(numeros)}: {numero} ({operadora}){tent_str}",
+                        "info"
+                    )
+
+                    try:
+                        # Discar
+                        numero_discar = numero
+                        if len(numero) == 11 and numero.startswith("92"):
+                            numero_discar = numero[2:]
+
+                        phone.discar(numero_discar)
+                        time.sleep(2)
+
+                        timestamp_inicio = time.time()
+                        monitor = phone.monitorar_chamada(TEMPO_ESPERA_CHAMADA)
+                        phone.encerrar_chamada()
+                        time.sleep(1)
+
+                        call_log = phone.ler_call_log(numero_discar)
+
+                        # Áudio
+                        transcricao = ""
+                        audio_info = None
+                        dialing_longo = (
+                            monitor.get("tempo_ate_atender", 0)
+                            and monitor["tempo_ate_atender"] > 20
+                        )
+
+                        audio_path = recorder.puxar_gravacao(numero_discar, timestamp_inicio)
+                        if audio_path:
+                            audio_info = analisar_audio(audio_path)
+                            if audio_info.get("tem_fala") or dialing_longo:
+                                transcricao = transcrever(audio_path)
+
+                        # Classificar
+                        resultado = classificar(transcricao, monitor, call_log, audio_info)
+                        resultado["numero"] = numero
+                        resultado["operadora"] = operadora
+                        resultado["tentativa"] = tentativa
+                        resultado["duracao_chamada"] = call_log.get("duration", 0)
+
+                        # Log com cor
+                        desc = resultado.get("descricao", "?")
+                        conf = resultado.get("confianca", 0)
+
+                        if "Pessoa" in desc:
+                            tag = "pessoa"
+                            self.total_atendeu += 1
+                        elif "Inexistente" in desc or "Bloqueado" in desc:
+                            tag = "descarte"
+                            self.total_descartados += 1
+                        else:
+                            tag = "nao"
+                            self.total_nao += 1
+
+                        self.total_discados += 1
+                        self._log(f"  >> {desc} ({conf:.0%})", tag)
+                        self._atualizar_stats()
+
+                        # Enviar resultado
+                        cloud.enviar_resultado(resultado)
+
+                        if numero in pendentes:
+                            pendentes.remove(numero)
+
+                    except Exception as e:
+                        self._log(f"  Erro: {e}", "erro")
+
+                    # Pausa
+                    if i < len(numeros) and self.rodando:
+                        time.sleep(TEMPO_ENTRE_CHAMADAS)
+
+            self._log("Parado.", "info")
+            self.lbl_status.configure(text="Parado", text_color="#888")
+            self.btn_iniciar.configure(text="INICIAR", fg_color="#e94560")
+
+        except Exception as e:
+            self._log(f"Erro fatal: {e}", "erro")
+            self.rodando = False
+            self.btn_iniciar.configure(text="INICIAR", fg_color="#e94560")
+            self.lbl_status.configure(text="Erro", text_color="#e57373")
+
+    def _atualizar_stats(self):
+        self.stats["discados"].configure(text=str(self.total_discados))
+        self.stats["atendeu"].configure(text=str(self.total_atendeu))
+        self.stats["nao"].configure(text=str(self.total_nao))
+        self.stats["desc"].configure(text=str(self.total_descartados))
+
+
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
