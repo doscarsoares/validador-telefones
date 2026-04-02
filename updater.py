@@ -6,7 +6,16 @@ Verifica e baixa atualizações do repositório.
 import os
 import json
 import logging
+import ssl
 import urllib.request
+
+try:
+    import certifi
+    SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    SSL_CONTEXT = ssl.create_default_context()
+    SSL_CONTEXT.check_hostname = False
+    SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +42,7 @@ def get_versao_remota() -> dict:
     try:
         req = urllib.request.Request(url)
         req.add_header("Cache-Control", "no-cache")
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, context=SSL_CONTEXT, timeout=10) as resp:
             return json.loads(resp.read().decode("utf-8"))
     except Exception as e:
         logger.error(f"Erro ao verificar atualizações: {e}")
@@ -97,7 +106,7 @@ def aplicar_atualizacao(callback=None) -> dict:
         try:
             req = urllib.request.Request(url)
             req.add_header("Cache-Control", "no-cache")
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, context=SSL_CONTEXT, timeout=15) as resp:
                 conteudo = resp.read()
 
             # Verificar se o conteúdo é diferente do local

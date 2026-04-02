@@ -5,8 +5,18 @@ Pede números, envia resultados.
 
 import json
 import logging
+import ssl
 import urllib.request
 import urllib.parse
+
+# Corrigir SSL no Mac (certificados)
+try:
+    import certifi
+    SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
+except ImportError:
+    SSL_CONTEXT = ssl.create_default_context()
+    SSL_CONTEXT.check_hostname = False
+    SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +44,7 @@ class CloudHandler:
         try:
             logger.info(f"Pedindo {quantidade} números da nuvem...")
             req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, context=SSL_CONTEXT, timeout=30) as resp:
                 dados = json.loads(resp.read().decode("utf-8"))
 
             if dados.get("erro"):
@@ -74,7 +84,7 @@ class CloudHandler:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, context=SSL_CONTEXT, timeout=30) as resp:
                 resposta = json.loads(resp.read().decode("utf-8"))
 
             if resposta.get("erro"):
@@ -116,7 +126,7 @@ class CloudHandler:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, context=SSL_CONTEXT, timeout=30) as resp:
                 resposta = json.loads(resp.read().decode("utf-8"))
 
             if resposta.get("erro"):
@@ -148,7 +158,7 @@ class CloudHandler:
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, context=SSL_CONTEXT, timeout=30) as resp:
                 resposta = json.loads(resp.read().decode("utf-8"))
 
             logger.info(f"Devolvidos {len(numeros)} números")
@@ -165,7 +175,7 @@ class CloudHandler:
 
         try:
             req = urllib.request.Request(url)
-            with urllib.request.urlopen(req, timeout=15) as resp:
+            with urllib.request.urlopen(req, context=SSL_CONTEXT, timeout=15) as resp:
                 return json.loads(resp.read().decode("utf-8"))
         except Exception as e:
             logger.error(f"Erro ao consultar status: {e}")
