@@ -931,13 +931,17 @@ class App(ctk.CTk):
 
                         try:
                             num_info_w = item["num_info"]
-                            audio_path_w = item["audio_path"]
+                            numero_discar_w = item["numero_discar"]
+                            timestamp_w = item["timestamp_inicio"]
                             monitor_w = item["monitor"]
-                            call_log_w = item["call_log"]
 
                             numero_w = num_info_w["numero"]
                             operadora_w = num_info_w.get("operadora", "?")
                             tentativa_w = num_info_w.get("tentativa", 1)
+
+                            # Puxar call_log e áudio (ADB — agora em background)
+                            call_log_w = phone.ler_call_log(numero_discar_w)
+                            audio_path_w = recorder.puxar_gravacao(numero_discar_w, timestamp_w)
 
                             transcricao_w = ""
                             audio_info_w = None
@@ -1016,26 +1020,21 @@ class App(ctk.CTk):
                         if len(numero) == 11 and numero.startswith("92"):
                             numero_discar = numero[2:]
 
-                        # === LIGAR (parte sequencial) ===
+                        # === LIGAR (parte sequencial — só isso bloqueia) ===
                         phone.discar(numero_discar)
                         time.sleep(1.5)
 
                         timestamp_inicio = time.time()
                         monitor = phone.monitorar_chamada(TEMPO_ESPERA_CHAMADA)
                         phone.encerrar_chamada()
-                        time.sleep(0.5)
 
-                        call_log = phone.ler_call_log(numero_discar)
-
-                        # === PUXAR ÁUDIO (rápido) ===
-                        audio_path = recorder.puxar_gravacao(numero_discar, timestamp_inicio)
-
-                        # === JOGAR NA FILA (análise em background) ===
+                        # === JOGAR NA FILA IMEDIATAMENTE ===
+                        # call_log, puxar áudio, transcrição — tudo em background
                         fila_analise.put({
                             "num_info": num_info,
-                            "audio_path": audio_path,
+                            "numero_discar": numero_discar,
+                            "timestamp_inicio": timestamp_inicio,
                             "monitor": monitor.copy(),
-                            "call_log": call_log.copy(),
                         })
 
                         erros_seguidos = 0
