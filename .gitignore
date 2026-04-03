@@ -1,0 +1,16 @@
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+dist/
+build/
+*.spec
+*.egg-info/
+audios/*.m4a
+audios/*.wav
+resultados/*.xlsx
+.admin
+.protected_config
+.manifest
+.cloud_url
+.celular_nome

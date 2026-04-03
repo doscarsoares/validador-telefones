@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Validador de Telefones — Guia de Instalação</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: 'Montserrat', sans-serif; background: #0d0d0d; color: #e0e0e0; line-height: 1.7; }
+
+.header {
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+    padding: 60px 20px;
+    text-align: center;
+    border-bottom: 3px solid #e94560;
+}
+.header h1 { font-size: 2.5em; font-weight: 700; color: #fff; margin-bottom: 10px; }
+.header .subtitle { font-size: 1.1em; color: #e94560; font-weight: 300; }
+
+.container { max-width: 800px; margin: 0 auto; padding: 40px 20px; }
+
+h2 {
+    font-size: 1.4em; font-weight: 600; color: #e94560;
+    margin: 40px 0 20px; padding-bottom: 8px;
+    border-bottom: 1px solid #333;
+}
+
+.step {
+    background: #1a1a2e;
+    border-radius: 12px;
+    padding: 25px;
+    margin: 15px 0;
+    border-left: 4px solid #e94560;
+}
+.step-number {
+    display: inline-block; background: #e94560; color: #fff;
+    width: 30px; height: 30px; border-radius: 50%;
+    text-align: center; line-height: 30px; font-weight: 700;
+    margin-right: 10px; font-size: 0.9em;
+}
+.step h3 { display: inline; font-size: 1.1em; color: #fff; }
+.step p { margin-top: 10px; color: #bbb; }
+.step .detail { font-size: 0.9em; color: #888; margin-top: 8px; }
+
+.url-box {
+    background: #0f3460;
+    border: 1px solid #e94560;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 15px 0;
+    word-break: break-all;
+    font-family: monospace;
+    font-size: 0.85em;
+    color: #4fc3f7;
+    position: relative;
+}
+.url-box .copy-btn {
+    position: absolute; top: 10px; right: 10px;
+    background: #e94560; color: #fff; border: none;
+    padding: 5px 12px; border-radius: 5px; cursor: pointer;
+    font-family: 'Montserrat', sans-serif; font-size: 0.8em;
+}
+.url-box .copy-btn:hover { background: #c81e45; }
+
+.tab-section { display: flex; gap: 10px; flex-wrap: wrap; margin: 15px 0; }
+.tab {
+    background: #16213e; padding: 8px 14px; border-radius: 8px;
+    font-size: 0.85em; border: 1px solid #333;
+}
+.tab.green { border-color: #81c784; color: #81c784; }
+.tab.yellow { border-color: #ffb74d; color: #ffb74d; }
+.tab.red { border-color: #e57373; color: #e57373; }
+.tab.blue { border-color: #4fc3f7; color: #4fc3f7; }
+.tab.gray { border-color: #888; color: #888; }
+
+.os-cards { display: flex; gap: 15px; flex-wrap: wrap; margin: 20px 0; }
+.os-card {
+    flex: 1; min-width: 200px; background: #1a1a2e;
+    border-radius: 12px; padding: 20px; text-align: center;
+    border: 1px solid #333;
+}
+.os-card h4 { color: #fff; margin: 10px 0 5px; }
+.os-card .file { color: #4fc3f7; font-family: monospace; font-size: 0.85em; }
+.os-card .icon { font-size: 2em; }
+
+.warning {
+    background: #2d1b00; border: 1px solid #ffb74d; border-radius: 8px;
+    padding: 15px; margin: 15px 0; color: #ffb74d;
+}
+
+.footer {
+    text-align: center; padding: 30px; color: #555;
+    font-size: 0.85em; border-top: 1px solid #222; margin-top: 40px;
+}
+</style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Validador de Telefones</h1>
+    <div class="subtitle">Guia de Instalação e Configuração</div>
+</div>
+
+<div class="container">
+
+    <!-- URL DO GOOGLE SHEETS -->
+    <h2>URL do Google Sheets (Servidor na Nuvem)</h2>
+    <p>Cole esta URL no programa quando solicitado:</p>
+    <div class="url-box">
+        <button class="copy-btn" onclick="copiarURL()">Copiar</button>
+        <span id="url-text">https://script.google.com/macros/s/AKfycbzIY-f0CACljinQLtuBQ8A3PcK7KKE9q81HP5MmXovzsbAtZwXJZ6fhs46A9cEwYu4jCQ/exec</span>
+    </div>
+    <span id="msg-copiado" style="color: #81c784; font-size: 0.85em; display: none;">Copiado!</span>
+
+    <!-- INSTALADORES -->
+    <h2>Passo 1 — Baixar o Instalador</h2>
+    <p>Escolha o instalador para o seu sistema operacional:</p>
+
+    <div class="os-cards">
+        <div class="os-card">
+            <div class="icon">🍎</div>
+            <h4>macOS</h4>
+            <div class="file">SETUP_..._MAC.command</div>
+            <p class="detail">Clique duplo no Finder</p>
+        </div>
+        <div class="os-card">
+            <div class="icon">🐧</div>
+            <h4>Linux</h4>
+            <div class="file">SETUP_..._LINUX.sh</div>
+            <p class="detail">Clique duplo ou: bash SETUP...sh</p>
+        </div>
+        <div class="os-card">
+            <div class="icon">🪟</div>
+            <h4>Windows</h4>
+            <div class="file">SETUP_..._WINDOWS.zip</div>
+            <p class="detail">Extrair zip, clicar no .bat</p>
+        </div>
+    </div>
+
+    <!-- INSTALAÇÃO -->
+    <h2>Passo 2 — Instalar</h2>
+
+    <div class="step">
+        <span class="step-number">1</span>
+        <h3>Execute o instalador</h3>
+        <p>Clique duplo no arquivo. O instalador vai abrir e guiar você por todas as etapas.</p>
+        <p class="detail">Na primeira vez, ele instala todas as dependências automaticamente. Pode demorar alguns minutos.</p>
+    </div>
+
+    <div class="step">
+        <span class="step-number">2</span>
+        <h3>Escolha a pasta de instalação</h3>
+        <p>O instalador sugere a pasta padrão de programas do seu sistema. Aceite ou escolha outra.</p>
+    </div>
+
+    <div class="step">
+        <span class="step-number">3</span>
+        <h3>Aguarde a instalação</h3>
+        <p>A barra de progresso mostra o andamento. Na primeira vez baixa o modelo de voz (~460MB).</p>
+    </div>
+
+    <div class="step">
+        <span class="step-number">4</span>
+        <h3>Pronto!</h3>
+        <p>Um ícone será criado na área de trabalho. Clique nele para abrir o programa.</p>
+    </div>
+
+    <!-- CONFIGURAÇÃO -->
+    <h2>Passo 3 — Configurar o Programa</h2>
+
+    <div class="step">
+        <span class="step-number">1</span>
+        <h3>Conecte o celular Android via USB</h3>
+        <p>Ative a <strong>Depuração USB</strong> nas configurações do desenvolvedor do celular.</p>
+        <p class="detail">Configurações → Sobre o telefone → toque 7x no "Número da versão" → volte → Opções do desenvolvedor → Depuração USB</p>
+    </div>
+
+    <div class="step">
+        <span class="step-number">2</span>
+        <h3>Instale o BCR (Basic Call Recorder)</h3>
+        <p>Instale no celular Android o app <strong>BCR</strong> para gravação de chamadas.</p>
+        <p class="detail">Disponível no GitHub: github.com/chenxiaolong/BCR</p>
+    </div>
+
+    <div class="step">
+        <span class="step-number">3</span>
+        <h3>Abra o programa e configure</h3>
+        <p>Cole a <strong>URL do Google Sheets</strong> (acima) no campo indicado.</p>
+        <p>Dê um <strong>nome para o celular</strong> (ex: cel1, cel2).</p>
+    </div>
+
+    <div class="step">
+        <span class="step-number">4</span>
+        <h3>Clique em INICIAR</h3>
+        <p>O programa vai pedir números da nuvem, discar automaticamente, classificar e enviar os resultados de volta. Roda sem parar até você clicar em PARAR.</p>
+    </div>
+
+    <!-- ABAS DO GOOGLE SHEETS -->
+    <h2>Abas do Google Sheets</h2>
+    <p>Os resultados aparecem organizados nestas abas:</p>
+
+    <div class="tab-section">
+        <div class="tab green"><strong>Atendeu</strong> — pessoa real atendeu</div>
+        <div class="tab yellow"><strong>Tentar Novamente</strong> — aguardando religar</div>
+        <div class="tab blue"><strong>Não Atende</strong> — tentou 3x, ninguém pegou</div>
+        <div class="tab gray"><strong>Desligados/Inexistentes</strong> — bloqueado/fora de área</div>
+        <div class="tab red"><strong>Descartados</strong> — número não existe</div>
+    </div>
+
+    <p style="color: #888; font-size: 0.9em;">
+        Números que não atendem são religados automaticamente até 3 vezes, com intervalo de horas entre cada tentativa.
+        Se em qualquer tentativa a pessoa atender, o número vai para a aba "Atendeu".
+    </p>
+
+    <!-- ESCALAR -->
+    <h2>Escalar com Múltiplos Celulares</h2>
+    <p>Para usar mais celulares ao mesmo tempo:</p>
+
+    <div class="step">
+        <span class="step-number">1</span>
+        <h3>Instale o programa em cada computador</h3>
+        <p>Cada computador precisa de um celular Android conectado via USB.</p>
+    </div>
+
+    <div class="step">
+        <span class="step-number">2</span>
+        <h3>Use a mesma URL do Google Sheets</h3>
+        <p>Todos usam a mesma URL. O sistema garante que nenhum número é discado por dois celulares.</p>
+    </div>
+
+    <div class="step">
+        <span class="step-number">3</span>
+        <h3>Dê nomes diferentes</h3>
+        <p>Cada celular precisa de um nome único: cel1, cel2, cel3...</p>
+    </div>
+
+    <div class="warning">
+        <strong>Importante:</strong> Os números são gerados aleatoriamente nas proporções corretas por operadora (41% Vivo, 25% Claro, 20% TIM, 14% Oi) com DDD 92. O sistema nunca liga para o mesmo número duas vezes.
+    </div>
+
+</div>
+
+<div class="footer">
+    Validador de Telefones v2.0
+</div>
+
+<script>
+function copiarURL() {
+    const url = document.getElementById('url-text').textContent;
+    navigator.clipboard.writeText(url).then(function() {
+        const msg = document.getElementById('msg-copiado');
+        msg.style.display = 'inline';
+        setTimeout(function() { msg.style.display = 'none'; }, 2000);
+    });
+}
+</script>
+
+</body>
+</html>

@@ -1,0 +1,22 @@
+{
+    "versao": "1.0",
+    "data": "2026-04-03",
+    "url_padrao": "https://script.google.com/macros/s/AKfycbzIY-f0CACljinQLtuBQ8A3PcK7KKE9q81HP5MmXovzsbAtZwXJZ6fhs46A9cEwYu4jCQ/exec",
+    "arquivos": [
+        "app_gui.py",
+        "main.py",
+        "main_cloud.py",
+        "classifier.py",
+        "config.py",
+        "phone_controller.py",
+        "audio_recorder.py",
+        "audio_analyzer.py",
+        "transcriber.py",
+        "excel_handler.py",
+        "cloud_handler.py",
+        "updater.py",
+        "scheduler.py",
+        "version.json"
+    ],
+    "mensagem": "Vers\u00e3o 1.0 \u2014 Beelza"
+}
