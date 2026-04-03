@@ -1,977 +1,1330 @@
 #!/usr/bin/env python3
 """
-╔══════════════════════════════════════════════════════╗
-║   📞 Validador de Telefones — Instalador Gráfico    ║
-║   PyQt5 Wizard • Windows / Mac / Linux              ║
-╚══════════════════════════════════════════════════════╝
+Validador de Telefones — Instalador Grafico
+PyQt5 | Adobe Photoshop-style UI
 """
 
 import sys
 import os
 import platform
 import subprocess
-import threading
 import shutil
+import time
 from pathlib import Path
 
 from PyQt5.QtWidgets import (
-    QApplication, QWizard, QWizardPage, QLabel, QVBoxLayout, QHBoxLayout,
-    QProgressBar, QTextEdit, QCheckBox, QLineEdit, QPushButton,
-    QFileDialog, QComboBox, QGroupBox, QRadioButton, QFrame,
-    QMessageBox, QSpacerItem, QSizePolicy, QWidget
+    QApplication, QWidget, QLabel, QVBoxLayout, QHBoxLayout,
+    QProgressBar, QLineEdit, QPushButton, QFileDialog,
+    QStackedWidget, QFrame, QSizePolicy, QSpacerItem, QMessageBox
 )
-from PyQt5.QtCore import Qt, QThread, pyqtSignal, QSize, QTimer
-from PyQt5.QtGui import QFont, QPixmap, QPalette, QColor, QIcon, QPainter
+from PyQt5.QtCore import Qt, QThread, pyqtSignal, QTimer
+from PyQt5.QtGui import QFont, QPixmap, QPalette, QColor, QIcon, QFontDatabase
 
 
 # ============================================================
-#  CONSTANTES
+#  BUNDLE PATH
+# ============================================================
+if getattr(sys, 'frozen', False):
+    BUNDLE_DIR = sys._MEIPASS
+else:
+    BUNDLE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+# ============================================================
+#  CONSTANTS
 # ============================================================
 APP_NAME = "Validador de Telefones"
-APP_VERSION = "1.0"
-WINDOW_WIDTH = 750
-WINDOW_HEIGHT = 520
+APP_VERSION = "2.1"
+WINDOW_WIDTH = 600
+WINDOW_HEIGHT = 500
 
-# Detectar SO
 IS_WINDOWS = platform.system() == "Windows"
 IS_MAC = platform.system() == "Darwin"
 IS_LINUX = platform.system() == "Linux"
 
-# Pasta padrão de instalação
 if IS_WINDOWS:
-    DEFAULT_INSTALL_DIR = str(Path.home() / "PhoneValidator")
-elif IS_MAC:
-    DEFAULT_INSTALL_DIR = str(Path.home() / "PhoneValidator")
+    DEFAULT_INSTALL_DIR = str(Path.home() / "ValidadorTelefones")
 else:
-    DEFAULT_INSTALL_DIR = str(Path.home() / "PhoneValidator")
+    DEFAULT_INSTALL_DIR = str(Path.home() / "ValidadorTelefones")
+
+COLOR_DARK_HEADER = "#1a1a1a"
+COLOR_HEADER_TEXT = "#ffffff"
+COLOR_SUBTEXT = "#888888"
+COLOR_BG = "#ffffff"
+COLOR_BLUE = "#2680EB"
+COLOR_BLUE_HOVER = "#1473CE"
+COLOR_BORDER = "#e0e0e0"
+COLOR_PROGRESS_BG = "#e8e8e8"
+COLOR_BODY_TEXT = "#333333"
+COLOR_LIGHT_BG = "#f8f8f8"
 
 
 # ============================================================
-#  ESTILO (Tema Escuro Moderno)
+#  FONT HELPER
 # ============================================================
-STYLESHEET = """
-QWizard {
-    background-color: #1a1a2e;
-}
-
-QWizardPage {
-    background-color: #1a1a2e;
-    color: #e0e0e0;
-}
-
-QLabel {
-    color: #e0e0e0;
-    font-size: 13px;
-}
-
-QLabel#title {
-    font-size: 22px;
-    font-weight: bold;
-    color: #00d4aa;
-    padding: 5px 0;
-}
-
-QLabel#subtitle {
-    font-size: 14px;
-    color: #8892b0;
-    padding-bottom: 10px;
-}
-
-QLabel#version {
-    font-size: 11px;
-    color: #5a6480;
-}
-
-QLabel#step_label {
-    font-size: 12px;
-    color: #00d4aa;
-    font-weight: bold;
-}
-
-QLabel#feature_icon {
-    font-size: 20px;
-}
-
-QPushButton {
-    background-color: #16213e;
-    color: #e0e0e0;
-    border: 1px solid #0f3460;
-    border-radius: 6px;
-    padding: 8px 20px;
-    font-size: 13px;
-    min-width: 90px;
-}
-
-QPushButton:hover {
-    background-color: #0f3460;
-    border-color: #00d4aa;
-}
-
-QPushButton:pressed {
-    background-color: #00d4aa;
-    color: #1a1a2e;
-}
-
-QPushButton#btn_primary {
-    background-color: #00d4aa;
-    color: #1a1a2e;
-    font-weight: bold;
-    border: none;
-}
-
-QPushButton#btn_primary:hover {
-    background-color: #00e8bb;
-}
-
-QPushButton#btn_browse {
-    min-width: 40px;
-    padding: 6px 12px;
-    font-size: 16px;
-}
-
-QProgressBar {
-    border: none;
-    border-radius: 8px;
-    text-align: center;
-    background-color: #16213e;
-    color: #e0e0e0;
-    font-size: 12px;
-    min-height: 22px;
-}
-
-QProgressBar::chunk {
-    border-radius: 8px;
-    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-        stop:0 #00d4aa, stop:1 #0ea5e9);
-}
-
-QTextEdit {
-    background-color: #0d1117;
-    color: #8b949e;
-    border: 1px solid #1e2d3d;
-    border-radius: 6px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-    font-size: 11px;
-    padding: 8px;
-}
-
-QCheckBox {
-    color: #e0e0e0;
-    font-size: 13px;
-    spacing: 8px;
-    padding: 4px 0;
-}
-
-QCheckBox::indicator {
-    width: 18px;
-    height: 18px;
-    border-radius: 4px;
-    border: 2px solid #0f3460;
-    background-color: #16213e;
-}
-
-QCheckBox::indicator:checked {
-    background-color: #00d4aa;
-    border-color: #00d4aa;
-}
-
-QCheckBox::indicator:hover {
-    border-color: #00d4aa;
-}
-
-QRadioButton {
-    color: #e0e0e0;
-    font-size: 13px;
-    spacing: 8px;
-    padding: 4px 0;
-}
-
-QRadioButton::indicator {
-    width: 18px;
-    height: 18px;
-    border-radius: 9px;
-    border: 2px solid #0f3460;
-    background-color: #16213e;
-}
-
-QRadioButton::indicator:checked {
-    background-color: #00d4aa;
-    border-color: #00d4aa;
-}
-
-QLineEdit {
-    background-color: #16213e;
-    color: #e0e0e0;
-    border: 1px solid #0f3460;
-    border-radius: 6px;
-    padding: 8px 12px;
-    font-size: 13px;
-}
-
-QLineEdit:focus {
-    border-color: #00d4aa;
-}
-
-QComboBox {
-    background-color: #16213e;
-    color: #e0e0e0;
-    border: 1px solid #0f3460;
-    border-radius: 6px;
-    padding: 8px 12px;
-    font-size: 13px;
-}
-
-QGroupBox {
-    color: #00d4aa;
-    border: 1px solid #1e2d3d;
-    border-radius: 8px;
-    margin-top: 12px;
-    padding-top: 20px;
-    font-weight: bold;
-    font-size: 13px;
-}
-
-QGroupBox::title {
-    subcontrol-origin: margin;
-    padding: 0 8px;
-}
-
-QFrame#separator {
-    background-color: #1e2d3d;
-    max-height: 1px;
-}
-
-QFrame#feature_card {
-    background-color: #16213e;
-    border-radius: 8px;
-    padding: 12px;
-}
-"""
+def get_font(size, bold=False, family=None):
+    families = ["Montserrat", "Helvetica Neue", "Segoe UI", "Arial", "sans-serif"]
+    if family:
+        families.insert(0, family)
+    f = QFont()
+    for fam in families:
+        f.setFamily(fam)
+        break
+    f.setPointSize(size)
+    f.setBold(bold)
+    return f
 
 
 # ============================================================
-#  THREAD DE INSTALAÇÃO
+#  STYLED MESSAGE BOX
+# ============================================================
+MSGBOX_STYLESHEET = (
+    "QMessageBox { background-color: #ffffff; }"
+    "QMessageBox QLabel { color: #333333; font-family: Montserrat, Helvetica Neue, sans-serif; font-size: 13px; }"
+)
+
+STYLE_BTN_POSITIVE = (
+    "background-color: #2680EB; color: white; border: none; border-radius: 4px; "
+    "padding: 8px 20px; font-family: Montserrat, Helvetica Neue, sans-serif; font-size: 11px; "
+    "font-weight: bold; min-width: 140px;"
+)
+
+STYLE_BTN_NEGATIVE = (
+    "background-color: #e0e0e0; color: #333333; border: none; border-radius: 4px; "
+    "padding: 8px 20px; font-family: Montserrat, Helvetica Neue, sans-serif; font-size: 11px; "
+    "font-weight: bold; min-width: 140px;"
+)
+
+
+def styled_msgbox(parent, title, text, buttons=None, icon_type="info"):
+    """Create a QMessageBox styled to match the installer theme.
+    buttons: list of (text, role) — first button is positive (blue), rest are negative (gray).
+    """
+    msg = QMessageBox(parent)
+    msg.setWindowTitle(title)
+    msg.setText(text)
+    msg.setStyleSheet(MSGBOX_STYLESHEET)
+
+    icon_map = {
+        "info": QMessageBox.Information,
+        "warning": QMessageBox.Warning,
+        "critical": QMessageBox.Critical,
+        "question": QMessageBox.Question,
+    }
+    msg.setIcon(icon_map.get(icon_type, QMessageBox.Information))
+
+    if buttons:
+        added = []
+        for i, (btn_text, btn_role) in enumerate(buttons):
+            btn = msg.addButton(btn_text, btn_role)
+            # Primeiro botão = positivo (azul), resto = negativo (cinza)
+            if i == 0:
+                btn.setStyleSheet(STYLE_BTN_POSITIVE)
+            else:
+                btn.setStyleSheet(STYLE_BTN_NEGATIVE)
+            added.append(btn)
+        msg.exec_()
+        return msg, added
+    else:
+        msg.exec_()
+        return msg, []
+
+
+# ============================================================
+#  INSTALLER THREAD
 # ============================================================
 class InstallerThread(QThread):
-    """Executa os comandos de instalação em background."""
-    progress = pyqtSignal(int)       # 0-100
-    log_message = pyqtSignal(str)    # Mensagens para o log
-    step_changed = pyqtSignal(str)   # Nome do passo atual
-    finished_ok = pyqtSignal()       # Instalação concluída com sucesso
-    finished_error = pyqtSignal(str) # Instalação falhou
+    progress = pyqtSignal(int, str)
+    finished = pyqtSignal(bool, str)
 
-    def __init__(self, install_dir, options):
+    def __init__(self, install_dir, reinstall_mode=False):
         super().__init__()
         self.install_dir = install_dir
-        self.options = options
+        self.reinstall_mode = reinstall_mode
 
-    def log(self, msg):
-        self.log_message.emit(msg)
+    # PATH expandido pra encontrar brew, adb, ffmpeg etc.
+    _EXTRA_PATH = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
-    def run_cmd(self, cmd, desc=""):
-        """Executa um comando e retorna (sucesso, output)."""
-        if desc:
-            self.log(f"  → {desc}")
+    def _run_cmd(self, cmd, shell=False, check=False):
         try:
-            if IS_WINDOWS:
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=300,
-                    shell=True, creationflags=subprocess.CREATE_NO_WINDOW
-                )
-            else:
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=300,
-                    shell=isinstance(cmd, str)
-                )
-            if result.returncode != 0 and result.stderr.strip():
-                self.log(f"    ⚠ {result.stderr.strip()[:200]}")
-            return result.returncode == 0, result.stdout
-        except subprocess.TimeoutExpired:
-            self.log(f"    ⚠ Timeout")
-            return False, ""
-        except Exception as e:
-            self.log(f"    ⚠ Erro: {e}")
-            return False, ""
+            env = os.environ.copy()
+            env["PATH"] = self._EXTRA_PATH + ":" + env.get("PATH", "")
+            result = subprocess.run(
+                cmd,
+                shell=shell,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=600,
+                env=env
+            )
+            return result.returncode == 0
+        except Exception:
+            return False
+
+    def _check_cmd(self, cmd):
+        """Verifica se um comando existe no sistema."""
+        # Checar com PATH expandido
+        for p in self._EXTRA_PATH.split(":"):
+            if os.path.exists(os.path.join(p, cmd)):
+                return True
+        return shutil.which(cmd) is not None
+
+    def _check_pip_pkg(self, pip_exe, pkg):
+        """Verifica se um pacote pip já está instalado."""
+        result = subprocess.run(
+            [pip_exe, "show", pkg],
+            capture_output=True, timeout=10
+        )
+        return result.returncode == 0
 
     def run(self):
         try:
-            steps = self._get_steps()
-            total = len(steps)
+            install_path = Path(self.install_dir)
 
-            for i, (name, func) in enumerate(steps):
-                self.step_changed.emit(name)
-                self.log(f"\n{'─'*40}")
-                self.log(f"  {name}")
-                self.log(f"{'─'*40}")
+            # Reinstall: kill any running instance first, then delete files
+            if self.reinstall_mode:
+                self.progress.emit(1, "Encerrando programa em execução...")
+                if IS_WINDOWS:
+                    subprocess.run(
+                        ["taskkill", "/f", "/im", "python.exe"],
+                        capture_output=True
+                    )
+                else:
+                    subprocess.run(
+                        ["pkill", "-f", "app_gui.py"],
+                        capture_output=True
+                    )
+                    subprocess.run(
+                        ["killall", "python3"],
+                        capture_output=True
+                    )
+                time.sleep(2)
 
-                success = func()
-                if not success:
-                    self.log(f"\n  ❌ Falha em: {name}")
-                    # Continua mesmo com erro (melhor tentar tudo)
+                self.progress.emit(2, "Apagando instalação anterior...")
+                if install_path.exists():
+                    for item in install_path.iterdir():
+                        if item.name == "venv":
+                            continue  # Keep venv to speed up reinstall
+                        try:
+                            if item.is_dir():
+                                shutil.rmtree(str(item), ignore_errors=True)
+                            else:
+                                item.unlink()
+                        except Exception:
+                            pass
+                self.progress.emit(5, "Instalação anterior apagada.")
 
-                pct = int((i + 1) / total * 100)
-                self.progress.emit(pct)
+            # Step 1: Pastas (0-5%)
+            self.progress.emit(2, "Preparando...")
+            for folder in ["audios", "resultados", "planilhas"]:
+                (install_path / folder).mkdir(parents=True, exist_ok=True)
+            self.progress.emit(5, "")
 
-            self.log(f"\n{'═'*40}")
-            self.log("  ✅ Instalação concluída!")
-            self.log(f"{'═'*40}")
-            self.finished_ok.emit()
+            # Step 2: Copiar arquivos (5-15%)
+            self.progress.emit(7, "Copiando arquivos...")
+            for item in os.listdir(BUNDLE_DIR):
+                src = os.path.join(BUNDLE_DIR, item)
+                dst = str(install_path / item)
+                try:
+                    if os.path.isdir(src):
+                        if not os.path.exists(dst):
+                            shutil.copytree(src, dst)
+                    else:
+                        shutil.copy2(src, dst)
+                except Exception:
+                    pass
+            self.progress.emit(15, "")
 
-        except Exception as e:
-            self.finished_error.emit(str(e))
+            # Step 3: Dependências do sistema — só instala o que falta (15-30%)
+            self.progress.emit(17, "Verificando sistema...")
+            if IS_LINUX:
+                missing = []
+                for cmd, pkg in [("python3","python3"), ("adb","adb"), ("ffmpeg","ffmpeg")]:
+                    if not self._check_cmd(cmd):
+                        missing.append(pkg)
+                # Sempre incluir esses pois não têm comando pra checar
+                for pkg in ["python3-venv", "python3-pip", "python3-tk", "portaudio19-dev"]:
+                    missing.append(pkg)
+                if missing:
+                    self._run_cmd(["sudo", "apt-get", "install", "-y"] + missing)
+            elif IS_MAC:
+                # Encontrar brew
+                brew_cmd = None
+                for bp in ["/usr/local/bin/brew", "/opt/homebrew/bin/brew"]:
+                    if os.path.exists(bp):
+                        brew_cmd = bp
+                        break
 
-    def _get_steps(self):
-        """Retorna lista de passos baseado no SO."""
-        steps = [
-            ("Criando pastas", self._criar_pastas),
-            ("Copiando arquivos", self._copiar_arquivos),
-        ]
+                # Se não tem Homebrew, instalar
+                if not brew_cmd:
+                    self.progress.emit(22, "Instalando Homebrew...")
+                    self._run_cmd(
+                        '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+                        shell=True
+                    )
+                    # Checar de novo
+                    for bp in ["/usr/local/bin/brew", "/opt/homebrew/bin/brew"]:
+                        if os.path.exists(bp):
+                            brew_cmd = bp
+                            break
 
-        if IS_WINDOWS:
-            steps += [
-                ("Verificando Python", self._check_python),
-                ("Criando ambiente virtual", self._criar_venv),
-                ("Instalando bibliotecas Python", self._instalar_pip),
-                ("Instalando Whisper", self._instalar_whisper),
-                ("Verificando ADB", self._check_adb),
-                ("Verificando FFmpeg", self._check_ffmpeg),
-                ("Baixando modelo de voz", self._baixar_modelo),
-                ("Criando atalho na Área de Trabalho", self._criar_atalho_windows),
-            ]
-        elif IS_MAC:
-            steps += [
-                ("Verificando Homebrew", self._check_brew),
-                ("Instalando dependências (brew)", self._instalar_brew_deps),
-                ("Criando ambiente virtual", self._criar_venv),
-                ("Instalando bibliotecas Python", self._instalar_pip),
-                ("Instalando Whisper", self._instalar_whisper),
-                ("Baixando modelo de voz", self._baixar_modelo),
-                ("Configurando permissões", self._config_mac),
-            ]
-        else:  # Linux
-            steps += [
-                ("Instalando dependências (apt)", self._instalar_apt),
-                ("Criando ambiente virtual", self._criar_venv),
-                ("Instalando bibliotecas Python", self._instalar_pip),
-                ("Instalando Whisper", self._instalar_whisper),
-                ("Baixando modelo de voz", self._baixar_modelo),
-                ("Configurando USB (udev)", self._config_udev),
-                ("Criando atalho", self._criar_atalho_linux),
-            ]
+                if brew_cmd:
+                    for pkg, cmd in [("ffmpeg","ffmpeg"), ("portaudio",""), ("android-platform-tools","adb")]:
+                        if cmd and self._check_cmd(cmd):
+                            continue
+                        if not cmd:
+                            try:
+                                r = subprocess.run(
+                                    [brew_cmd, "list", pkg],
+                                    capture_output=True, timeout=30
+                                )
+                                if r.returncode == 0:
+                                    continue
+                            except Exception:
+                                pass
+                        self._run_cmd([brew_cmd, "install", pkg])
+            self.progress.emit(30, "")
 
-        steps.append(("Finalizando", self._finalizar))
-        return steps
+            # Step 4: Venv — só cria se não existir (30-40%)
+            self.progress.emit(32, "Verificando ambiente...")
+            venv_path = install_path / "venv"
+            if IS_WINDOWS:
+                pip_exe = str(venv_path / "Scripts" / "pip")
+                python_exe = str(venv_path / "Scripts" / "python")
+            else:
+                pip_exe = str(venv_path / "bin" / "pip")
+                python_exe = str(venv_path / "bin" / "python3")
 
-    # --- Passos comuns ---
+            if not os.path.exists(pip_exe):
+                # Procurar Python 3.11+ no sistema (versões antigas causam crash)
+                system_python = None
+                # Se Mac e tem brew, garantir que Python 3.11+ está instalado
+                if IS_MAC and brew_cmd:
+                    has_python = False
+                    for pv in ["python3.11", "python3.12", "python3.13"]:
+                        if self._check_cmd(pv):
+                            has_python = True
+                            break
+                    if not has_python:
+                        self._run_cmd([brew_cmd, "install", "python@3.11"])
 
-    def _criar_pastas(self):
-        for pasta in ["audios", "resultados", "planilhas"]:
-            p = os.path.join(self.install_dir, pasta)
-            os.makedirs(p, exist_ok=True)
-            self.log(f"    📁 {pasta}/")
-        return True
+                # Checar caminhos explícitos primeiro (Mac Framework)
+                explicit_paths = [
+                    "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11",
+                    "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12",
+                    "/Library/Frameworks/Python.framework/Versions/3.13/bin/python3.13",
+                    "/usr/local/bin/python3.11",
+                    "/usr/local/bin/python3.12",
+                    "/opt/homebrew/bin/python3.11",
+                    "/opt/homebrew/bin/python3.12",
+                    "/opt/homebrew/bin/python3",
+                ]
+                for p in explicit_paths:
+                    if os.path.exists(p):
+                        system_python = p
+                        break
+                if not system_python:
+                    system_python = (
+                        shutil.which("python3.11") or
+                        shutil.which("python3.12") or
+                        shutil.which("python3") or
+                        "python3"
+                    )
+                self._run_cmd([system_python, "-m", "venv", str(venv_path)])
+            self.progress.emit(40, "")
 
-    def _copiar_arquivos(self):
-        src_dir = os.path.dirname(os.path.abspath(__file__))
-        arquivos = [
-            "config.py", "main.py", "main_cloud.py", "phone_controller.py",
-            "audio_recorder.py", "transcriber.py", "classifier.py", "cloud_handler.py", "updater.py", "scheduler.py", "app_gui.py",
-            "excel_handler.py", "requirements.txt", "version.json", "Icone_validador.png", "Icone_validador.icns", "LEIA-ME.html",
-        ]
-        for arq in arquivos:
-            src = os.path.join(src_dir, arq)
-            dst = os.path.join(self.install_dir, arq)
-            if os.path.exists(src) and src != dst:
-                shutil.copy2(src, dst)
-                self.log(f"    📄 {arq}")
-            elif not os.path.exists(src):
-                self.log(f"    ⚠ {arq} não encontrado")
-        return True
+            # Step 5: Pacotes pip — só instala o que falta (40-60%)
+            self.progress.emit(42, "Verificando pacotes...")
+            pkgs_base = ["customtkinter", "openpyxl", "certifi", "Pillow"]
+            if IS_MAC:
+                pkgs_base.append("pyobjc-framework-Cocoa")
+            missing_pkgs = [p for p in pkgs_base if not self._check_pip_pkg(pip_exe, p)]
+            if missing_pkgs:
+                self._run_cmd([pip_exe, "install", "--quiet"] + missing_pkgs)
+            # PyAudio pode falhar — tentar separado
+            if not self._check_pip_pkg(pip_exe, "pyaudio"):
+                self._run_cmd([pip_exe, "install", "--quiet", "pyaudio"])
+            self.progress.emit(55, "")
 
-    def _criar_venv(self):
-        venv_path = os.path.join(self.install_dir, "venv")
-        if os.path.exists(venv_path):
-            self.log("    Ambiente virtual já existe")
-            return True
-        ok, _ = self.run_cmd(
-            f"{sys.executable} -m venv \"{venv_path}\"",
-            "Criando venv..."
+            # Step 6: Whisper — só instala se não tiver (55-75%)
+            self.progress.emit(57, "Verificando Whisper...")
+            if not self._check_pip_pkg(pip_exe, "openai-whisper"):
+                self._run_cmd([pip_exe, "install", "--quiet", "--prefer-binary", "numba"])
+                self._run_cmd([pip_exe, "install", "--quiet", "openai-whisper"])
+            self.progress.emit(75, "")
+
+            # Step 7: Modelo Whisper — só baixa se não tiver (75-85%)
+            self.progress.emit(77, "Verificando modelo de voz...")
+            whisper_cache = Path.home() / ".cache" / "whisper" / "small.pt"
+            if not whisper_cache.exists():
+                self._run_cmd([
+                    python_exe, "-c",
+                    "import whisper; whisper.load_model('small')"
+                ])
+            self.progress.emit(85, "")
+
+            # Step 8: Install Montserrat font (82-88%)
+            self.progress.emit(83, "Instalando fontes...")
+            try:
+                import urllib.request
+                font_url = (
+                    "https://github.com/JulietaUla/Montserrat/raw/master/"
+                    "fonts/ttf/Montserrat-Regular.ttf"
+                )
+                if IS_LINUX:
+                    font_dir = Path.home() / ".local" / "share" / "fonts"
+                elif IS_MAC:
+                    font_dir = Path.home() / "Library" / "Fonts"
+                else:
+                    font_dir = Path.home() / "AppData" / "Local" / "Microsoft" / "Windows" / "Fonts"
+                font_dir.mkdir(parents=True, exist_ok=True)
+                font_dest = font_dir / "Montserrat-Regular.ttf"
+                if not font_dest.exists():
+                    urllib.request.urlretrieve(font_url, str(font_dest))
+            except Exception:
+                pass
+            self.progress.emit(88, "Fontes instaladas.")
+
+            # Step 9: Create launcher script (88-92%)
+            self.progress.emit(89, "Criando lancador...")
+            if not IS_WINDOWS:
+                launcher = install_path / "executar.sh"
+                extra_path = ""
+                if IS_MAC:
+                    extra_path = (
+                        "export PATH=$PATH:/opt/homebrew/bin"
+                        ":/usr/local/bin:$HOME/Library/Android/sdk/platform-tools\n"
+                    )
+                elif IS_LINUX:
+                    extra_path = (
+                        "export PATH=$PATH:/usr/local/bin"
+                        ":$HOME/Android/Sdk/platform-tools\n"
+                    )
+                launcher_content = (
+                    "#!/bin/bash\n"
+                    + extra_path
+                    + f'cd "{install_path}"\n'
+                    + f'"{python_exe}" app_gui.py\n'
+                )
+                launcher.write_text(launcher_content)
+                launcher.chmod(0o755)
+            self.progress.emit(92, "Lancador criado.")
+
+            # Step 10: Desktop shortcut (92-97%)
+            self.progress.emit(93, "Criando atalho...")
+            desktop = Path.home() / "Desktop"
+            icon_src = install_path / "Icone_validador.png"
+
+            # Limpar ícones antigos com nomes diferentes
+            for old_name in [
+                "Validador de Telefones.app",
+                "ValidadorTelefones.app",
+                "Validador de Telefones.desktop",
+                "ValidadorTelefones.desktop",
+            ]:
+                old_path = desktop / old_name
+                if old_path.exists():
+                    shutil.rmtree(str(old_path), ignore_errors=True)
+
+            if IS_LINUX:
+                desktop_file = desktop / "ValidadorTelefones.desktop"
+                desktop_file.write_text(
+                    "[Desktop Entry]\n"
+                    f"Name={APP_NAME}\n"
+                    "Type=Application\n"
+                    f"Exec=bash {install_path}/executar.sh\n"
+                    f"Icon={icon_src}\n"
+                    "Terminal=false\n"
+                    "Categories=Utility;\n"
+                )
+                desktop_file.chmod(0o755)
+            elif IS_MAC:
+                app_dir = desktop / "Validador de Telefones.app"
+                contents = app_dir / "Contents" / "MacOS"
+                resources = app_dir / "Contents" / "Resources"
+                contents.mkdir(parents=True, exist_ok=True)
+                resources.mkdir(parents=True, exist_ok=True)
+
+                # Copiar ícone .icns pro Resources do .app
+                icns_src = install_path / "Icone_validador.icns"
+                icns_dst = resources / "Icone_validador.icns"
+                if icns_src.exists():
+                    shutil.copy2(str(icns_src), str(icns_dst))
+                else:
+                    # Se não tiver .icns, gerar a partir do .png usando sips
+                    png_src = install_path / "Icone_validador.png"
+                    if png_src.exists():
+                        iconset = Path("/tmp/ValidadorIcon.iconset")
+                        iconset.mkdir(parents=True, exist_ok=True)
+                        for size in [16, 32, 128, 256, 512]:
+                            subprocess.run([
+                                "sips", "-z", str(size), str(size),
+                                str(png_src), "--out",
+                                str(iconset / f"icon_{size}x{size}.png")
+                            ], capture_output=True)
+                        if (iconset / "icon_32x32.png").exists():
+                            shutil.copy2(
+                                str(iconset / "icon_32x32.png"),
+                                str(iconset / "icon_16x16@2x.png")
+                            )
+                        if (iconset / "icon_256x256.png").exists():
+                            shutil.copy2(
+                                str(iconset / "icon_256x256.png"),
+                                str(iconset / "icon_128x128@2x.png")
+                            )
+                        if (iconset / "icon_512x512.png").exists():
+                            shutil.copy2(
+                                str(iconset / "icon_512x512.png"),
+                                str(iconset / "icon_256x256@2x.png")
+                            )
+                        subprocess.run([
+                            "iconutil", "-c", "icns", str(iconset),
+                            "-o", str(icns_dst)
+                        ], capture_output=True)
+                        shutil.rmtree(str(iconset), ignore_errors=True)
+
+                exec_file = contents / "ValidadorTelefones"
+                exec_file.write_text(
+                    "#!/bin/bash\n"
+                    "export PATH=\"/usr/local/bin:/usr/bin:/opt/homebrew/bin"
+                    ":$HOME/Library/Android/sdk/platform-tools:$PATH\"\n"
+                    f'cd "{install_path}"\n'
+                    f'"{install_path}/venv/bin/python3" app_gui.py\n'
+                )
+                exec_file.chmod(0o755)
+                plist = app_dir / "Contents" / "Info.plist"
+                plist.write_text(
+                    '<?xml version="1.0" encoding="UTF-8"?>\n'
+                    '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"'
+                    ' "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n'
+                    '<plist version="1.0"><dict>\n'
+                    '<key>CFBundleName</key><string>Validador de Telefones</string>\n'
+                    '<key>CFBundleExecutable</key><string>ValidadorTelefones</string>\n'
+                    '<key>CFBundleIconFile</key><string>Icone_validador</string>\n'
+                    '<key>CFBundlePackageType</key><string>APPL</string>\n'
+                    '<key>CFBundleIdentifier</key><string>com.validador.telefones</string>\n'
+                    '<key>NSHighResolutionCapable</key><true/>\n'
+                    '<key>LSBackgroundOnly</key><false/>\n'
+                    '</dict></plist>\n'
+                )
+            self.progress.emit(97, "Atalho criado.")
+
+            # Step 11: Save .version (97-100%)
+            self.progress.emit(98, "Finalizando...")
+            (install_path / ".version").write_text(APP_VERSION)
+            self.progress.emit(100, "Concluido.")
+
+            self.finished.emit(True, "")
+
+        except Exception as exc:
+            self.finished.emit(False, str(exc))
+
+
+# ============================================================
+#  STYLED COMPONENTS
+# ============================================================
+class DarkHeader(QFrame):
+    """Dark top bar — shows step title + subtitle."""
+
+    def __init__(self, title="", subtitle="", parent=None):
+        super().__init__(parent)
+        self.setFixedHeight(72)
+        self.setStyleSheet(f"background-color: {COLOR_DARK_HEADER}; border: none;")
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(28, 0, 28, 0)
+        layout.setSpacing(0)
+
+        col = QVBoxLayout()
+        col.setSpacing(2)
+        col.setAlignment(Qt.AlignVCenter)
+
+        self.title_lbl = QLabel(title)
+        self.title_lbl.setFont(get_font(11, bold=True))
+        self.title_lbl.setStyleSheet(f"color: {COLOR_HEADER_TEXT}; background: transparent;")
+
+        self.sub_lbl = QLabel(subtitle)
+        self.sub_lbl.setFont(get_font(9))
+        self.sub_lbl.setStyleSheet(f"color: {COLOR_SUBTEXT}; background: transparent;")
+
+        col.addStretch()
+        col.addWidget(self.title_lbl)
+        col.addWidget(self.sub_lbl)
+        col.addStretch()
+
+        layout.addLayout(col)
+        layout.addStretch()
+
+    def set_texts(self, title, subtitle):
+        self.title_lbl.setText(title)
+        self.sub_lbl.setText(subtitle)
+
+
+class BlueButton(QPushButton):
+    def __init__(self, text, parent=None):
+        super().__init__(text, parent)
+        self.setFont(get_font(11, bold=True))
+        self.setFixedSize(160, 40)
+        self.setCursor(Qt.PointingHandCursor)
+        self._apply_style(False)
+
+    def _apply_style(self, hovered):
+        bg = COLOR_BLUE_HOVER if hovered else COLOR_BLUE
+        self.setStyleSheet(
+            f"QPushButton {{"
+            f"  background-color: {bg};"
+            f"  color: #ffffff;"
+            f"  border: none;"
+            f"  border-radius: 4px;"
+            f"  font-size: 11pt;"
+            f"  font-weight: bold;"
+            f"}}"
         )
-        return ok
 
-    def _get_pip(self):
-        """Retorna caminho do pip no venv."""
-        venv = os.path.join(self.install_dir, "venv")
-        if IS_WINDOWS:
-            return os.path.join(venv, "Scripts", "pip.exe")
-        return os.path.join(venv, "bin", "pip")
+    def enterEvent(self, event):
+        self._apply_style(True)
+        super().enterEvent(event)
 
-    def _get_python_venv(self):
-        """Retorna caminho do python no venv."""
-        venv = os.path.join(self.install_dir, "venv")
-        if IS_WINDOWS:
-            return os.path.join(venv, "Scripts", "python.exe")
-        return os.path.join(venv, "bin", "python3")
+    def leaveEvent(self, event):
+        self._apply_style(False)
+        super().leaveEvent(event)
 
-    def _instalar_pip(self):
-        pip = self._get_pip()
-        self.run_cmd(f"\"{pip}\" install --upgrade pip", "Atualizando pip...")
-        ok, _ = self.run_cmd(f"\"{pip}\" install openpyxl pyaudio", "Instalando openpyxl e pyaudio...")
-        if not ok:
-            # PyAudio pode falhar no Windows — tentar com wheel
-            self.log("    Tentando PyAudio alternativo...")
-            self.run_cmd(f"\"{pip}\" install openpyxl", "openpyxl...")
-            self.run_cmd(f"\"{pip}\" install pyaudio", "pyaudio...")
-        return True
 
-    def _instalar_whisper(self):
-        pip = self._get_pip()
-        ok, _ = self.run_cmd(
-            f"\"{pip}\" install openai-whisper",
-            "Instalando Whisper (pode demorar alguns minutos)..."
-        )
-        return ok
+# ============================================================
+#  PAGE 1 — WELCOME
+# ============================================================
+class WelcomePage(QWidget):
+    def __init__(self, on_continue):
+        super().__init__()
+        self.setStyleSheet(f"background-color: {COLOR_BG};")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-    def _baixar_modelo(self):
-        python = self._get_python_venv()
-        modelo = self.options.get("whisper_model", "base")
-        ok, _ = self.run_cmd(
-            f"\"{python}\" -c \"import whisper; whisper.load_model('{modelo}')\"",
-            f"Baixando modelo '{modelo}'..."
-        )
-        return ok
+        # Content area
+        content = QWidget()
+        content.setStyleSheet(f"background-color: {COLOR_BG};")
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(40, 48, 40, 48)
+        cl.setSpacing(0)
+        cl.setAlignment(Qt.AlignCenter)
 
-    def _finalizar(self):
-        self.log("    Verificando instalação...")
-        python = self._get_python_venv()
-        ok, _ = self.run_cmd(
-            f"\"{python}\" -c \"import openpyxl; import whisper; print('OK')\"",
-            "Testando imports..."
-        )
-        if ok:
-            self.log("    ✅ Todos os módulos carregados com sucesso!")
-        return True
-
-    # --- Windows ---
-
-    def _check_python(self):
-        ok, out = self.run_cmd("python --version", "Verificando Python...")
-        if ok:
-            self.log(f"    ✅ {out.strip()}")
-        return ok
-
-    def _check_adb(self):
-        ok, _ = self.run_cmd("adb version", "Verificando ADB...")
-        if ok:
-            self.log("    ✅ ADB encontrado")
-        else:
-            self.log("    ⚠ ADB não encontrado!")
-            self.log("    Baixe em: https://developer.android.com/tools/releases/platform-tools")
-            self.log("    Extraia e adicione a pasta ao PATH do sistema")
-        return True  # Não bloquear por isso
-
-    def _check_ffmpeg(self):
-        ok, _ = self.run_cmd("ffmpeg -version", "Verificando FFmpeg...")
-        if ok:
-            self.log("    ✅ FFmpeg encontrado")
-        else:
-            self.log("    ⚠ FFmpeg não encontrado!")
-            self.log("    Instale: choco install ffmpeg  OU  scoop install ffmpeg")
-            self.log("    Ou baixe em: https://ffmpeg.org/download.html")
-        return True
-
-    def _criar_atalho_windows(self):
-        try:
-            desktop = os.path.join(Path.home(), "Desktop")
-            if not os.path.exists(desktop):
-                desktop = os.path.join(Path.home(), "Área de Trabalho")
-
-            # Criar .bat para executar
-            bat_path = os.path.join(self.install_dir, "EXECUTAR.bat")
-            python_venv = self._get_python_venv()
-            with open(bat_path, "w", encoding="utf-8") as f:
-                f.write(f'@echo off\n')
-                f.write(f'cd /d "{self.install_dir}"\n')
-                f.write(f'"{python_venv}" main.py\n')
-                f.write(f'pause\n')
-
-            # Criar atalho .bat na área de trabalho
-            shortcut_path = os.path.join(desktop, "Validador de Telefones.bat")
-            with open(shortcut_path, "w", encoding="utf-8") as f:
-                f.write(f'@echo off\n')
-                f.write(f'cd /d "{self.install_dir}"\n')
-                f.write(f'"{python_venv}" main.py\n')
-                f.write(f'pause\n')
-
-            self.log(f"    📌 Atalho criado na Área de Trabalho")
-            return True
-        except Exception as e:
-            self.log(f"    ⚠ Não foi possível criar atalho: {e}")
-            return True
-
-    # --- Mac ---
-
-    def _check_brew(self):
-        ok, _ = self.run_cmd("brew --version", "Verificando Homebrew...")
-        if ok:
-            self.log("    ✅ Homebrew encontrado")
-        else:
-            self.log("    Instalando Homebrew...")
-            self.run_cmd(
-                '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
-                "Baixando Homebrew..."
+        # Logo
+        logo_lbl = QLabel()
+        logo_lbl.setAlignment(Qt.AlignCenter)
+        logo_path = os.path.join(BUNDLE_DIR, "Icone_validador.png")
+        if os.path.exists(logo_path):
+            pix = QPixmap(logo_path).scaled(
+                120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation
             )
-        return True
+            logo_lbl.setPixmap(pix)
+        else:
+            logo_lbl.setText("")
+            logo_lbl.setFixedSize(120, 120)
+        logo_lbl.setStyleSheet("background: transparent;")
+        cl.addWidget(logo_lbl)
 
-    def _instalar_brew_deps(self):
-        deps = ["ffmpeg", "portaudio", "android-platform-tools"]
-        for dep in deps:
-            self.run_cmd(f"brew install {dep}", f"Instalando {dep}...")
-        return True
+        cl.addSpacing(28)
 
-    def _config_mac(self):
-        self.run_cmd(f"chmod +x \"{self.install_dir}\"/*.sh", "Permissões...")
-        self.run_cmd(f"xattr -r -d com.apple.quarantine \"{self.install_dir}\"", "Quarentena...")
-        return True
+        # App name
+        name_lbl = QLabel(APP_NAME)
+        name_lbl.setAlignment(Qt.AlignCenter)
+        name_lbl.setFont(get_font(26, bold=True))
+        name_lbl.setStyleSheet(f"color: {COLOR_BODY_TEXT}; background: transparent;")
+        cl.addWidget(name_lbl)
 
-    # --- Linux ---
+        cl.addSpacing(10)
 
-    def _instalar_apt(self):
-        deps = "python3 python3-pip python3-venv android-tools-adb ffmpeg portaudio19-dev python3-pyaudio"
-        ok, _ = self.run_cmd(
-            f"sudo apt install -y {deps}",
-            "Instalando pacotes do sistema..."
+        # Version
+        ver_lbl = QLabel(f"Vers\u00e3o {APP_VERSION}")
+        ver_lbl.setAlignment(Qt.AlignCenter)
+        ver_lbl.setFont(get_font(13))
+        ver_lbl.setStyleSheet(f"color: {COLOR_SUBTEXT}; background: transparent;")
+        cl.addWidget(ver_lbl)
+
+        cl.addSpacing(20)
+
+        # Disclaimer
+        disclaimer = QLabel(
+            "Este software foi desenvolvido para fins estritamente acad\u00eamicos "
+            "e de uso interno, sem qualquer finalidade econ\u00f4mica ou comercial. "
+            "A utiliza\u00e7\u00e3o inadequada deste programa \u00e9 de exclusiva "
+            "responsabilidade do usu\u00e1rio. Respeite a legisla\u00e7\u00e3o vigente "
+            "e a privacidade de terceiros."
         )
-        return ok
+        disclaimer.setAlignment(Qt.AlignCenter)
+        disclaimer.setWordWrap(True)
+        disclaimer.setFont(get_font(9))
+        disclaimer.setStyleSheet(f"color: #999999; background: transparent; padding: 0 20px;")
+        cl.addWidget(disclaimer)
 
-    def _config_udev(self):
-        rules = (
-            'SUBSYSTEM=="usb", ATTR{idVendor}=="04e8", MODE="0666", GROUP="plugdev"\n'
-            'SUBSYSTEM=="usb", ATTR{idVendor}=="2717", MODE="0666", GROUP="plugdev"\n'
-            'SUBSYSTEM=="usb", ATTR{idVendor}=="22b8", MODE="0666", GROUP="plugdev"\n'
-            'SUBSYSTEM=="usb", ATTR{idVendor}=="1004", MODE="0666", GROUP="plugdev"\n'
-            'SUBSYSTEM=="usb", ATTR{idVendor}=="12d1", MODE="0666", GROUP="plugdev"\n'
-            'SUBSYSTEM=="usb", ATTR{idVendor}=="18d1", MODE="0666", GROUP="plugdev"\n'
-            'SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", MODE="0666", GROUP="plugdev"\n'
-        )
-        try:
-            rules_file = "/etc/udev/rules.d/51-android.rules"
-            self.run_cmd(f"sudo bash -c 'echo \"{rules}\" > {rules_file}'", "Regras USB...")
-            self.run_cmd("sudo udevadm control --reload-rules", "Recarregando udev...")
-            return True
-        except:
-            return True
+        cl.addStretch()
 
-    def _criar_atalho_linux(self):
-        desktop_file = os.path.join(
-            Path.home(), ".local", "share", "applications", "phone-validator.desktop"
-        )
-        python_venv = self._get_python_venv()
-        content = (
-            "[Desktop Entry]\n"
-            f"Name={APP_NAME}\n"
-            "Comment=Validador de Telefones\n"
-            f"Exec=bash -c 'cd \"{self.install_dir}\" && \"{python_venv}\" main.py; exec bash'\n"
-            "Terminal=true\n"
-            "Type=Application\n"
-            "Categories=Utility;\n"
-        )
-        try:
-            os.makedirs(os.path.dirname(desktop_file), exist_ok=True)
-            with open(desktop_file, "w") as f:
-                f.write(content)
-            os.chmod(desktop_file, 0o755)
-            self.log("    📌 Atalho criado no menu de aplicativos")
-        except Exception as e:
-            self.log(f"    ⚠ {e}")
-        return True
+        # Continue button
+        btn_row = QHBoxLayout()
+        btn_row.setAlignment(Qt.AlignCenter)
+        btn = BlueButton("Continuar")
+        btn.clicked.connect(on_continue)
+        btn_row.addWidget(btn)
+        cl.addLayout(btn_row)
+
+        layout.addWidget(content, stretch=1)
 
 
 # ============================================================
-#  PÁGINAS DO WIZARD
+#  PAGE 2 — CONFIGURATION
 # ============================================================
-
-class WelcomePage(QWizardPage):
-    """Página 1: Bem-vindo."""
-
-    def __init__(self):
+class ConfigPage(QWidget):
+    def __init__(self, on_install, on_back):
         super().__init__()
-        self.setTitle("")
+        self.setStyleSheet(f"background-color: {COLOR_BG};")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        layout = QVBoxLayout()
-        layout.setSpacing(8)
-        layout.setContentsMargins(40, 20, 40, 20)
+        # Header
+        self.header = DarkHeader("Instala\u00e7\u00e3o", "OP\u00c7\u00d5ES")
+        layout.addWidget(self.header)
 
-        # Ícone grande
-        icon_label = QLabel("📞")
-        icon_label.setAlignment(Qt.AlignCenter)
-        icon_label.setFont(QFont("Segoe UI Emoji", 48))
-        layout.addWidget(icon_label)
+        # Content
+        content = QWidget()
+        content.setStyleSheet(f"background-color: {COLOR_BG};")
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(40, 40, 40, 40)
+        cl.setSpacing(0)
 
-        # Título
-        title = QLabel(APP_NAME)
-        title.setObjectName("title")
-        title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        # Label
+        loc_lbl = QLabel("Local de instala\u00e7\u00e3o:")
+        loc_lbl.setFont(get_font(13, bold=True))
+        loc_lbl.setStyleSheet(f"color: {COLOR_BODY_TEXT}; background: transparent;")
+        cl.addWidget(loc_lbl)
 
-        # Versão
-        version = QLabel(f"Versão {APP_VERSION}")
-        version.setObjectName("version")
-        version.setAlignment(Qt.AlignCenter)
-        layout.addWidget(version)
+        cl.addSpacing(10)
 
-        # Separador
-        sep = QFrame()
-        sep.setObjectName("separator")
-        sep.setFrameShape(QFrame.HLine)
-        layout.addWidget(sep)
+        # Path row
+        path_row = QHBoxLayout()
+        path_row.setSpacing(8)
 
-        layout.addSpacing(10)
+        self.path_edit = QLineEdit(DEFAULT_INSTALL_DIR)
+        self.path_edit.setFont(get_font(12))
+        self.path_edit.setFixedHeight(36)
+        self.path_edit.setStyleSheet(
+            f"QLineEdit {{"
+            f"  border: 1px solid {COLOR_BORDER};"
+            f"  border-radius: 3px;"
+            f"  padding: 0 10px;"
+            f"  color: {COLOR_BODY_TEXT};"
+            f"  background-color: #ffffff;"
+            f"  font-size: 12pt;"
+            f"}}"
+        )
 
-        # Features
-        features = [
-            ("📱", "Discagem automática via celular Android (ADB)"),
-            ("🧠", "Reconhecimento de voz com inteligência artificial"),
-            ("📊", "Classificação automática das chamadas"),
-            ("📋", "Resultados exportados em planilha Excel"),
-        ]
+        browse_btn = QPushButton("Procurar...")
+        browse_btn.setFont(get_font(11))
+        browse_btn.setFixedHeight(36)
+        browse_btn.setCursor(Qt.PointingHandCursor)
+        browse_btn.setStyleSheet(
+            f"QPushButton {{"
+            f"  border: 1px solid {COLOR_BORDER};"
+            f"  border-radius: 3px;"
+            f"  padding: 0 14px;"
+            f"  color: {COLOR_BODY_TEXT};"
+            f"  background-color: {COLOR_LIGHT_BG};"
+            f"  font-size: 11pt;"
+            f"}}"
+            f"QPushButton:hover {{ background-color: #e8e8e8; }}"
+        )
+        browse_btn.clicked.connect(self._browse)
 
-        for emoji, text in features:
-            row = QHBoxLayout()
-            row.setSpacing(12)
+        path_row.addWidget(self.path_edit)
+        path_row.addWidget(browse_btn)
+        cl.addLayout(path_row)
 
-            icon = QLabel(emoji)
-            icon.setObjectName("feature_icon")
-            icon.setFixedWidth(30)
-            row.addWidget(icon)
+        cl.addStretch()
 
-            desc = QLabel(text)
-            desc.setWordWrap(True)
-            row.addWidget(desc)
+        # Buttons row
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(12)
+        btn_row.addStretch()
 
-            layout.addLayout(row)
+        back_btn = QPushButton("Voltar")
+        back_btn.setFont(get_font(11))
+        back_btn.setFixedSize(120, 40)
+        back_btn.setCursor(Qt.PointingHandCursor)
+        back_btn.setStyleSheet(
+            f"QPushButton {{"
+            f"  border: 1px solid {COLOR_BORDER};"
+            f"  border-radius: 4px;"
+            f"  color: {COLOR_BODY_TEXT};"
+            f"  background-color: {COLOR_LIGHT_BG};"
+            f"  font-size: 11pt;"
+            f"}}"
+            f"QPushButton:hover {{ background-color: #e0e0e0; }}"
+        )
+        back_btn.clicked.connect(on_back)
 
-        layout.addStretch()
+        install_btn = BlueButton("Instalar")
+        install_btn.clicked.connect(lambda: on_install(self.path_edit.text().strip()))
 
-        # SO detectado
-        so = "Windows" if IS_WINDOWS else ("macOS" if IS_MAC else "Linux")
-        so_label = QLabel(f"Sistema detectado: {so} • Python {platform.python_version()}")
-        so_label.setObjectName("version")
-        so_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(so_label)
+        btn_row.addWidget(back_btn)
+        btn_row.addWidget(install_btn)
+        cl.addLayout(btn_row)
 
-        self.setLayout(layout)
-
-
-class ConfigPage(QWizardPage):
-    """Página 2: Configurações."""
-
-    def __init__(self):
-        super().__init__()
-        self.setTitle("")
-
-        layout = QVBoxLayout()
-        layout.setSpacing(12)
-        layout.setContentsMargins(40, 20, 40, 20)
-
-        # Título
-        step = QLabel("⚙️  Configurações")
-        step.setObjectName("title")
-        layout.addWidget(step)
-
-        subtitle = QLabel("Escolha onde instalar e as opções do sistema")
-        subtitle.setObjectName("subtitle")
-        layout.addWidget(subtitle)
-
-        # --- Local de instalação ---
-        group_dir = QGroupBox("Local de Instalação")
-        dir_layout = QHBoxLayout()
-
-        self.dir_input = QLineEdit(DEFAULT_INSTALL_DIR)
-        self.dir_input.setPlaceholderText("Pasta de instalação")
-        dir_layout.addWidget(self.dir_input)
-
-        btn_browse = QPushButton("📁")
-        btn_browse.setObjectName("btn_browse")
-        btn_browse.clicked.connect(self._browse)
-        dir_layout.addWidget(btn_browse)
-
-        group_dir.setLayout(dir_layout)
-        layout.addWidget(group_dir)
-
-        # --- Modo de gravação ---
-        group_rec = QGroupBox("Modo de Gravação de Áudio")
-        rec_layout = QVBoxLayout()
-
-        self.radio_mic = QRadioButton("🎙️  Microfone do computador (celular no viva-voz)")
-        self.radio_mic.setChecked(True)
-        rec_layout.addWidget(self.radio_mic)
-
-        self.radio_app = QRadioButton("📱  App de gravação no celular (ACR, Cube, etc.)")
-        rec_layout.addWidget(self.radio_app)
-
-        group_rec.setLayout(rec_layout)
-        layout.addWidget(group_rec)
-
-        # --- Modelo Whisper ---
-        group_model = QGroupBox("Modelo de Reconhecimento de Voz")
-        model_layout = QVBoxLayout()
-
-        model_info = QLabel("Modelos maiores são mais precisos, mas mais lentos e pesados.")
-        model_info.setObjectName("subtitle")
-        model_layout.addWidget(model_info)
-
-        self.combo_model = QComboBox()
-        self.combo_model.addItem("tiny  —  75 MB, muito rápido, precisão básica", "tiny")
-        self.combo_model.addItem("base  —  150 MB, rápido, boa precisão (recomendado)", "base")
-        self.combo_model.addItem("small  —  500 MB, médio, muito preciso", "small")
-        self.combo_model.addItem("medium  —  1.5 GB, lento, excelente precisão", "medium")
-        self.combo_model.setCurrentIndex(1)  # base como padrão
-        model_layout.addWidget(self.combo_model)
-
-        group_model.setLayout(model_layout)
-        layout.addWidget(group_model)
-
-        # --- Opções extras ---
-        group_opts = QGroupBox("Opções")
-        opts_layout = QVBoxLayout()
-
-        self.check_shortcut = QCheckBox("Criar atalho na Área de Trabalho")
-        self.check_shortcut.setChecked(True)
-        opts_layout.addWidget(self.check_shortcut)
-
-        self.check_adb = QCheckBox("Instalar/verificar ADB (Android Debug Bridge)")
-        self.check_adb.setChecked(True)
-        opts_layout.addWidget(self.check_adb)
-
-        group_opts.setLayout(opts_layout)
-        layout.addWidget(group_opts)
-
-        layout.addStretch()
-
-        # Registrar campos para o wizard
-        self.registerField("install_dir", self.dir_input)
-
-        self.setLayout(layout)
+        layout.addWidget(content, stretch=1)
 
     def _browse(self):
-        folder = QFileDialog.getExistingDirectory(self, "Escolher pasta de instalação")
-        if folder:
-            self.dir_input.setText(folder)
-
-    def get_options(self):
-        return {
-            "install_dir": self.dir_input.text(),
-            "recording_mode": "microfone" if self.radio_mic.isChecked() else "app_android",
-            "whisper_model": self.combo_model.currentData(),
-            "create_shortcut": self.check_shortcut.isChecked(),
-            "install_adb": self.check_adb.isChecked(),
-        }
+        chosen = QFileDialog.getExistingDirectory(
+            self, "Escolha a pasta de instala\u00e7\u00e3o", self.path_edit.text()
+        )
+        if chosen:
+            self.path_edit.setText(chosen)
 
 
-class InstallPage(QWizardPage):
-    """Página 3: Progresso da instalação."""
-
+# ============================================================
+#  PAGE 3 — INSTALLING
+# ============================================================
+class InstallingPage(QWidget):
     def __init__(self):
         super().__init__()
-        self.setTitle("")
-        self._complete = False
+        self.setStyleSheet(f"background-color: {COLOR_BG};")
 
-        layout = QVBoxLayout()
-        layout.setSpacing(12)
-        layout.setContentsMargins(40, 20, 40, 20)
+        self._start_time = None
+        self._current_pct = 0
 
-        # Título
-        step = QLabel("📦  Instalando...")
-        step.setObjectName("title")
-        layout.addWidget(step)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # Passo atual
-        self.step_label = QLabel("Preparando...")
-        self.step_label.setObjectName("step_label")
-        layout.addWidget(self.step_label)
+        # Top progress bar (thin, blue)
+        self.top_bar = QProgressBar()
+        self.top_bar.setRange(0, 100)
+        self.top_bar.setValue(0)
+        self.top_bar.setFixedHeight(4)
+        self.top_bar.setTextVisible(False)
+        self.top_bar.setStyleSheet(
+            f"QProgressBar {{"
+            f"  border: none;"
+            f"  background-color: {COLOR_PROGRESS_BG};"
+            f"}}"
+            f"QProgressBar::chunk {{"
+            f"  background-color: {COLOR_BLUE};"
+            f"}}"
+        )
+        layout.addWidget(self.top_bar)
 
-        # Barra de progresso
-        self.progress = QProgressBar()
-        self.progress.setRange(0, 100)
-        self.progress.setValue(0)
-        layout.addWidget(self.progress)
+        # Header
+        self.header = DarkHeader("Instalando (0%)", "CALCULANDO TEMPO RESTANTE")
+        layout.addWidget(self.header)
 
-        # Log
-        log_label = QLabel("Detalhes:")
-        log_label.setObjectName("subtitle")
-        layout.addWidget(log_label)
+        # Content
+        content = QWidget()
+        content.setStyleSheet(f"background-color: {COLOR_BG};")
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(40, 48, 40, 48)
+        cl.setSpacing(0)
+        cl.setAlignment(Qt.AlignCenter)
 
-        self.log_text = QTextEdit()
-        self.log_text.setReadOnly(True)
-        layout.addWidget(self.log_text)
+        # Logo
+        self.logo_lbl = QLabel()
+        self.logo_lbl.setAlignment(Qt.AlignCenter)
+        logo_path = os.path.join(BUNDLE_DIR, "Icone_validador.png")
+        if os.path.exists(logo_path):
+            pix = QPixmap(logo_path).scaled(
+                100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
+            self.logo_lbl.setPixmap(pix)
+        else:
+            self.logo_lbl.setFixedSize(100, 100)
+        self.logo_lbl.setStyleSheet("background: transparent;")
+        cl.addWidget(self.logo_lbl)
 
-        self.setLayout(layout)
+        cl.addSpacing(24)
 
-    def initializePage(self):
-        """Começa a instalação quando a página aparece."""
-        wizard = self.wizard()
-        config_page = wizard.page(1)
-        options = config_page.get_options()
-        install_dir = options["install_dir"]
+        name_lbl = QLabel(APP_NAME)
+        name_lbl.setAlignment(Qt.AlignCenter)
+        name_lbl.setFont(get_font(22, bold=True))
+        name_lbl.setStyleSheet(f"color: {COLOR_BODY_TEXT}; background: transparent;")
+        cl.addWidget(name_lbl)
 
-        self.thread = InstallerThread(install_dir, options)
-        self.thread.progress.connect(self._on_progress)
-        self.thread.log_message.connect(self._on_log)
-        self.thread.step_changed.connect(self._on_step)
-        self.thread.finished_ok.connect(self._on_finished)
-        self.thread.finished_error.connect(self._on_error)
-        self.thread.start()
+        cl.addSpacing(8)
 
-    def _on_progress(self, value):
-        self.progress.setValue(value)
+        ver_lbl = QLabel(f"Vers\u00e3o {APP_VERSION}")
+        ver_lbl.setAlignment(Qt.AlignCenter)
+        ver_lbl.setFont(get_font(13))
+        ver_lbl.setStyleSheet(f"color: {COLOR_SUBTEXT}; background: transparent;")
+        cl.addWidget(ver_lbl)
 
-    def _on_log(self, msg):
-        self.log_text.append(msg)
-        # Auto scroll
-        scrollbar = self.log_text.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+        cl.addStretch()
 
-    def _on_step(self, step_name):
-        self.step_label.setText(f"⏳  {step_name}")
+        layout.addWidget(content, stretch=1)
 
-    def _on_finished(self):
-        self.step_label.setText("✅  Instalação concluída!")
-        self.progress.setValue(100)
-        self._complete = True
-        self.completeChanged.emit()
+    def start_timer(self):
+        self._start_time = time.time()
 
-    def _on_error(self, error):
-        self.step_label.setText(f"❌  Erro: {error}")
-        self._on_log(f"\n❌ ERRO: {error}")
-        self._complete = True
-        self.completeChanged.emit()
+    def update_progress(self, pct, _msg):
+        self._current_pct = pct
+        self.top_bar.setValue(pct)
+        time_str = self._estimate_time(pct)
+        self.header.set_texts(f"Instalando ({pct}%)", time_str)
 
-    def isComplete(self):
-        return self._complete
+    def _estimate_time(self, pct):
+        if self._start_time is None or pct <= 0:
+            return "CALCULANDO TEMPO RESTANTE"
+        elapsed = time.time() - self._start_time
+        if pct >= 100:
+            return "CONCLU\u00cdDO"
+        estimated_total = elapsed / (pct / 100.0)
+        remaining = estimated_total - elapsed
+        if remaining < 60:
+            secs = max(1, int(remaining))
+            return f"< {secs} SEGUNDO{'S' if secs != 1 else ''} RESTANTE"
+        mins = int(remaining / 60)
+        if mins == 1:
+            return "< 1 MINUTO RESTANTE"
+        return f"< {mins} MINUTOS RESTANTES"
 
 
-class FinishPage(QWizardPage):
-    """Página 4: Conclusão."""
-
-    def __init__(self):
+# ============================================================
+#  PAGE 4 — COMPLETE
+# ============================================================
+class CompletePage(QWidget):
+    def __init__(self, on_open, on_close):
         super().__init__()
-        self.setTitle("")
+        self.setStyleSheet(f"background-color: {COLOR_BG};")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        layout = QVBoxLayout()
-        layout.setSpacing(12)
-        layout.setContentsMargins(40, 30, 40, 20)
+        content = QWidget()
+        content.setStyleSheet(f"background-color: {COLOR_BG};")
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(60, 60, 60, 60)
+        cl.setSpacing(0)
+        cl.setAlignment(Qt.AlignCenter)
 
-        # Ícone
-        icon = QLabel("🎉")
-        icon.setAlignment(Qt.AlignCenter)
-        icon.setFont(QFont("Segoe UI Emoji", 48))
-        layout.addWidget(icon)
+        # Logo
+        logo_lbl = QLabel()
+        logo_lbl.setAlignment(Qt.AlignCenter)
+        logo_path = os.path.join(BUNDLE_DIR, "Icone_validador.png")
+        if os.path.exists(logo_path):
+            pix = QPixmap(logo_path).scaled(
+                100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
+            logo_lbl.setPixmap(pix)
+        else:
+            logo_lbl.setFixedSize(100, 100)
+        logo_lbl.setStyleSheet("background: transparent;")
+        cl.addWidget(logo_lbl)
 
-        # Título
-        title = QLabel("Instalação Concluída!")
-        title.setObjectName("title")
+        cl.addSpacing(28)
+
+        done_lbl = QLabel("Instala\u00e7\u00e3o conclu\u00edda")
+        done_lbl.setAlignment(Qt.AlignCenter)
+        done_lbl.setFont(get_font(24, bold=True))
+        done_lbl.setStyleSheet(f"color: {COLOR_BODY_TEXT}; background: transparent;")
+        cl.addWidget(done_lbl)
+
+        cl.addSpacing(14)
+
+        msg_lbl = QLabel(
+            f"O {APP_NAME} foi instalado com sucesso."
+        )
+        msg_lbl.setAlignment(Qt.AlignCenter)
+        msg_lbl.setFont(get_font(13))
+        msg_lbl.setWordWrap(True)
+        msg_lbl.setStyleSheet(f"color: {COLOR_SUBTEXT}; background: transparent;")
+        cl.addWidget(msg_lbl)
+
+        cl.addStretch()
+
+        # Botão Abrir
+        btn_row = QHBoxLayout()
+        btn_row.setAlignment(Qt.AlignCenter)
+        btn_row.setSpacing(12)
+
+        open_btn = BlueButton("Continuar, abrir o programa")
+        open_btn.setFixedSize(250, 44)
+        open_btn.clicked.connect(on_open)
+        btn_row.addWidget(open_btn)
+        cl.addLayout(btn_row)
+
+        cl.addSpacing(12)
+
+        # Botão Sair
+        exit_row = QHBoxLayout()
+        exit_row.setAlignment(Qt.AlignCenter)
+        exit_btn = QPushButton("Sair")
+        exit_btn.setFont(get_font(10))
+        exit_btn.setFixedSize(100, 32)
+        exit_btn.setCursor(Qt.PointingHandCursor)
+        exit_btn.setStyleSheet(
+            f"QPushButton {{"
+            f"  border: none;"
+            f"  color: {COLOR_SUBTEXT};"
+            f"  background: transparent;"
+            f"  font-size: 10pt;"
+            f"}}"
+            f"QPushButton:hover {{ color: {COLOR_BODY_TEXT}; }}"
+        )
+        exit_btn.clicked.connect(on_close)
+        exit_row.addWidget(exit_btn)
+        cl.addLayout(exit_row)
+
+        layout.addWidget(content, stretch=1)
+
+
+# ============================================================
+#  PAGE: EXISTING INSTALLATION DETECTED
+# ============================================================
+class ExistingPage(QWidget):
+    def __init__(self, install_path, on_open, on_reinstall, on_cancel):
+        super().__init__()
+        self.setStyleSheet(f"background-color: {COLOR_BG};")
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+
+        content = QWidget()
+        content.setStyleSheet(f"background-color: {COLOR_BG};")
+        cl = QVBoxLayout(content)
+        cl.setContentsMargins(60, 48, 60, 48)
+        cl.setSpacing(0)
+        cl.setAlignment(Qt.AlignCenter)
+
+        # Logo
+        logo_lbl = QLabel()
+        logo_lbl.setAlignment(Qt.AlignCenter)
+        logo_path = os.path.join(BUNDLE_DIR, "Icone_validador.png")
+        if os.path.exists(logo_path):
+            pix = QPixmap(logo_path).scaled(
+                100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation
+            )
+            logo_lbl.setPixmap(pix)
+        logo_lbl.setStyleSheet("background: transparent;")
+        cl.addWidget(logo_lbl)
+
+        cl.addSpacing(24)
+
+        title = QLabel("Instala\u00e7\u00e3o existente detectada")
         title.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title)
+        title.setFont(get_font(20, bold=True))
+        title.setStyleSheet(f"color: {COLOR_BODY_TEXT}; background: transparent;")
+        cl.addWidget(title)
 
-        layout.addSpacing(10)
+        cl.addSpacing(12)
 
-        # Próximos passos
-        steps_title = QLabel("Próximos passos:")
-        steps_title.setObjectName("step_label")
-        layout.addWidget(steps_title)
+        path_lbl = QLabel(f"O programa j\u00e1 est\u00e1 instalado em:\n{install_path}")
+        path_lbl.setAlignment(Qt.AlignCenter)
+        path_lbl.setFont(get_font(11))
+        path_lbl.setWordWrap(True)
+        path_lbl.setStyleSheet(f"color: {COLOR_SUBTEXT}; background: transparent;")
+        cl.addWidget(path_lbl)
 
-        steps = [
-            "1️⃣  Conecte o celular Android via cabo USB",
-            "2️⃣  Ative 'Depuração USB' no celular",
-            "      (Configurações → Sobre → toque 7x em 'Número da versão'",
-            "       → Opções de desenvolvedor → Depuração USB)",
-            "3️⃣  Coloque a planilha .xlsx na pasta 'planilhas/'",
-            "4️⃣  Execute o programa pelo atalho ou pelo terminal",
-        ]
+        cl.addSpacing(36)
 
-        for s in steps:
-            lbl = QLabel(s)
-            lbl.setStyleSheet("padding-left: 10px;")
-            layout.addWidget(lbl)
+        # Botão Abrir
+        btn_open = BlueButton("Abrir o programa")
+        btn_open.setFixedSize(220, 44)
+        btn_open.clicked.connect(on_open)
+        open_row = QHBoxLayout()
+        open_row.setAlignment(Qt.AlignCenter)
+        open_row.addWidget(btn_open)
+        cl.addLayout(open_row)
 
-        layout.addStretch()
+        cl.addSpacing(12)
 
-        # Botão abrir pasta
-        self.btn_open = QPushButton("📂  Abrir Pasta de Instalação")
-        self.btn_open.setObjectName("btn_primary")
-        self.btn_open.setCursor(Qt.PointingHandCursor)
-        self.btn_open.clicked.connect(self._open_folder)
-        layout.addWidget(self.btn_open, alignment=Qt.AlignCenter)
+        # Botão Reinstalar
+        btn_reinstall = QPushButton("Apagar e reinstalar")
+        btn_reinstall.setFont(get_font(11))
+        btn_reinstall.setMinimumWidth(240)
+        btn_reinstall.setFixedHeight(38)
+        btn_reinstall.setCursor(Qt.PointingHandCursor)
+        btn_reinstall.setStyleSheet(
+            f"QPushButton {{"
+            f"  border: 1px solid {COLOR_BORDER};"
+            f"  border-radius: 4px;"
+            f"  color: {COLOR_BODY_TEXT};"
+            f"  background-color: {COLOR_LIGHT_BG};"
+            f"  font-size: 11pt;"
+            f"  padding: 0 16px;"
+            f"  min-width: 200px;"
+            f"}}"
+            f"QPushButton:hover {{ background-color: #e0e0e0; }}"
+        )
+        btn_reinstall.clicked.connect(on_reinstall)
+        reinstall_row = QHBoxLayout()
+        reinstall_row.setAlignment(Qt.AlignCenter)
+        reinstall_row.addWidget(btn_reinstall)
+        cl.addLayout(reinstall_row)
 
-        layout.addStretch()
+        cl.addSpacing(12)
 
-        self.setLayout(layout)
+        # Botão Cancelar
+        btn_cancel = QPushButton("Cancelar")
+        btn_cancel.setFont(get_font(10))
+        btn_cancel.setFixedSize(120, 32)
+        btn_cancel.setCursor(Qt.PointingHandCursor)
+        btn_cancel.setStyleSheet(
+            f"QPushButton {{"
+            f"  border: none;"
+            f"  color: {COLOR_SUBTEXT};"
+            f"  background: transparent;"
+            f"  font-size: 10pt;"
+            f"}}"
+            f"QPushButton:hover {{ color: {COLOR_BODY_TEXT}; }}"
+        )
+        btn_cancel.clicked.connect(on_cancel)
+        cancel_row = QHBoxLayout()
+        cancel_row.setAlignment(Qt.AlignCenter)
+        cancel_row.addWidget(btn_cancel)
+        cl.addLayout(cancel_row)
 
-    def _open_folder(self):
-        wizard = self.wizard()
-        config_page = wizard.page(1)
-        install_dir = config_page.dir_input.text()
-
-        if os.path.exists(install_dir):
-            if IS_WINDOWS:
-                os.startfile(install_dir)
-            elif IS_MAC:
-                subprocess.run(["open", install_dir])
-            else:
-                subprocess.run(["xdg-open", install_dir])
+        cl.addStretch()
+        layout.addWidget(content, stretch=1)
 
 
 # ============================================================
-#  WIZARD PRINCIPAL
+#  DETECT EXISTING INSTALLATION
 # ============================================================
-class InstallerWizard(QWizard):
+def find_existing_install():
+    """Procura instalação existente nos locais padrão."""
+    locations = [
+        str(Path.home() / "ValidadorTelefones"),
+        str(Path.home() / "Applications" / "ValidadorTelefones"),
+        "/opt/ValidadorTelefones",
+        str(Path.home() / ".local" / "share" / "ValidadorTelefones"),
+    ]
+    for loc in locations:
+        if os.path.exists(os.path.join(loc, "app_gui.py")):
+            return loc
+    return None
+
+
+# ============================================================
+#  MAIN WINDOW
+# ============================================================
+class InstallerWindow(QWidget):
     def __init__(self):
         super().__init__()
-
-        self.setWindowTitle(f"{APP_NAME} — Instalador")
+        self.setWindowTitle(f"{APP_NAME} \u2014 Instalador")
         self.setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT)
-        self.setWizardStyle(QWizard.ModernStyle)
+        self.setStyleSheet(f"QWidget {{ background-color: {COLOR_BG}; }}")
 
-        # Botões em português
-        self.setButtonText(QWizard.NextButton, "Próximo ›")
-        self.setButtonText(QWizard.BackButton, "‹ Voltar")
-        self.setButtonText(QWizard.CancelButton, "Cancelar")
-        self.setButtonText(QWizard.FinishButton, "Concluir")
+        # Window icon
+        icon_path = os.path.join(BUNDLE_DIR, "Icone_validador.png")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
 
-        # Páginas
-        self.addPage(WelcomePage())      # 0
-        self.addPage(ConfigPage())       # 1
-        self.addPage(InstallPage())      # 2
-        self.addPage(FinishPage())       # 3
+        # Center on screen
+        screen = QApplication.primaryScreen().geometry()
+        x = (screen.width() - WINDOW_WIDTH) // 2
+        y = (screen.height() - WINDOW_HEIGHT) // 2
+        self.move(x, y)
+
+        # Stack
+        self._stack = QStackedWidget(self)
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.addWidget(self._stack)
+
+        self._existing_path = find_existing_install()
+
+        # Pages
+        self._page_welcome = WelcomePage(on_continue=self._go_config)
+        self._page_config = ConfigPage(
+            on_install=self._start_install,
+            on_back=self._go_welcome
+        )
+        self._page_installing = InstallingPage()
+        self._page_complete = CompletePage(on_open=self._open_installed, on_close=self.close)
+
+        if self._existing_path:
+            self._page_existing = ExistingPage(
+                install_path=self._existing_path,
+                on_open=self._open_existing,
+                on_reinstall=self._reinstall,
+                on_cancel=self.close
+            )
+            self._stack.addWidget(self._page_existing)   # index 0
+            self._stack.addWidget(self._page_welcome)    # index 1
+            self._stack.addWidget(self._page_config)     # index 2
+            self._stack.addWidget(self._page_installing) # index 3
+            self._stack.addWidget(self._page_complete)   # index 4
+            self._stack.setCurrentIndex(0)
+            self._idx_welcome = 1
+            self._idx_config = 2
+            self._idx_installing = 3
+            self._idx_complete = 4
+        else:
+            self._stack.addWidget(self._page_welcome)    # index 0
+            self._stack.addWidget(self._page_config)     # index 1
+            self._stack.addWidget(self._page_installing) # index 2
+            self._stack.addWidget(self._page_complete)   # index 3
+            self._idx_welcome = 0
+            self._idx_config = 1
+            self._idx_installing = 2
+            self._idx_complete = 3
+
+        self._thread = None
+
+    def _open_existing(self):
+        """Abre o programa existente e fecha o instalador."""
+        app_path = os.path.join(str(Path.home()), "Desktop", "Validador de Telefones.app")
+        if IS_MAC and os.path.exists(app_path):
+            subprocess.Popen(["open", app_path])
+        else:
+            launcher = os.path.join(self._existing_path, "executar.sh")
+            if os.path.exists(launcher):
+                subprocess.Popen(["bash", launcher])
+        self.close()
+
+    def _reinstall(self):
+        """Confirma e reinstala — vai direto para a tela de instalação."""
+        msg, btns = styled_msgbox(
+            self, "Confirmar",
+            f"Isso vai apagar todos os arquivos em:\n\n"
+            f"{self._existing_path}\n\n"
+            f"(O ambiente virtual será preservado para acelerar a reinstalação.)\n\n"
+            f"Deseja continuar?",
+            buttons=[
+                ("Sim, apagar e reinstalar", QMessageBox.AcceptRole),
+                ("Cancelar", QMessageBox.RejectRole),
+            ],
+            icon_type="warning"
+        )
+
+        if msg.clickedButton() == btns[0]:
+            # Go directly to installing page with reinstall mode
+            self._page_config.path_edit.setText(self._existing_path)
+            self._stack.setCurrentIndex(self._idx_installing)
+            self._page_installing.start_timer()
+
+            self._thread = InstallerThread(self._existing_path, reinstall_mode=True)
+            self._thread.progress.connect(self._page_installing.update_progress)
+            self._thread.finished.connect(self._on_install_done)
+            self._thread.start()
+
+    def _go_welcome(self):
+        self._stack.setCurrentIndex(self._idx_welcome)
+
+    def _go_config(self):
+        self._stack.setCurrentIndex(self._idx_config)
+
+    def _open_installed(self):
+        """Abre o programa instalado e fecha o instalador."""
+        app_path = os.path.join(str(Path.home()), "Desktop", "Validador de Telefones.app")
+        if IS_MAC and os.path.exists(app_path):
+            subprocess.Popen(["open", app_path])
+        else:
+            install_dir = self._page_config.path_edit.text().strip()
+            launcher = os.path.join(install_dir, "executar.sh")
+            if os.path.exists(launcher):
+                subprocess.Popen(["bash", launcher])
+        self.close()
+
+    def _start_install(self, path):
+        if not path:
+            return
+
+        # Popup de declaração
+        msg, btns = styled_msgbox(
+            self, "Declara\u00e7\u00e3o de Uso",
+            "Declaro que utilizarei este programa de forma \u00e9tica e "
+            "respons\u00e1vel, apenas para os fins a que se destina, com as "
+            "autoriza\u00e7\u00f5es necess\u00e1rias, em conformidade com a "
+            "legisla\u00e7\u00e3o brasileira de telecomunica\u00e7\u00f5es e "
+            "prote\u00e7\u00e3o de dados.",
+            buttons=[
+                ("Sim, declaro", QMessageBox.AcceptRole),
+                ("N\u00e3o, cancelar", QMessageBox.RejectRole),
+            ],
+            icon_type="info"
+        )
+
+        if msg.clickedButton() != btns[0]:
+            return
+
+        self._stack.setCurrentIndex(self._idx_installing)
+        self._page_installing.start_timer()
+
+        self._thread = InstallerThread(path)
+        self._thread.progress.connect(self._page_installing.update_progress)
+        self._thread.finished.connect(self._on_install_done)
+        self._thread.start()
+
+    def _on_install_done(self, success, error_msg):
+        if success:
+            self._stack.setCurrentIndex(self._idx_complete)
+        else:
+            styled_msgbox(
+                self, "Erro na instala\u00e7\u00e3o",
+                f"Ocorreu um erro durante a instala\u00e7\u00e3o:\n\n{error_msg}",
+                icon_type="critical"
+            )
+            self._stack.setCurrentIndex(self._idx_config)
+
+    def closeEvent(self, event):
+        """Warn the user if installation is still running."""
+        installing_visible = (
+            self._stack.currentIndex() == self._idx_installing
+        )
+        thread_running = (
+            self._thread is not None and self._thread.isRunning()
+        )
+        if installing_visible and thread_running:
+            msg, btns = styled_msgbox(
+                self,
+                "Cancelar instala\u00e7\u00e3o?",
+                "A instala\u00e7\u00e3o ainda n\u00e3o foi conclu\u00edda. "
+                "Se voc\u00ea fechar agora, os dados poder\u00e3o ser perdidos "
+                "e a instala\u00e7\u00e3o ficar\u00e1 incompleta.",
+                buttons=[
+                    ("Continuar instala\u00e7\u00e3o", QMessageBox.RejectRole),
+                    ("Sair mesmo assim", QMessageBox.AcceptRole),
+                ],
+                icon_type="warning"
+            )
+            # btns[0] = "Continuar instalação" (blue/positive), btns[1] = "Sair mesmo assim" (gray)
+            if msg.clickedButton() == btns[1]:
+                event.accept()
+            else:
+                event.ignore()
+        else:
+            event.accept()
 
 
 # ============================================================
-#  MAIN
+#  ENTRY POINT
 # ============================================================
 def main():
+    # Prevenir múltiplas instâncias
+    import tempfile
+    import fcntl
+    lock_file = os.path.join(tempfile.gettempdir(), "validador_installer.lock")
+    fp = open(lock_file, "w")
+    try:
+        fcntl.flock(fp, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (IOError, OSError):
+        # Já tem uma instância rodando — sair silenciosamente
+        sys.exit(0)
+
     app = QApplication(sys.argv)
     app.setApplicationName(APP_NAME)
-    app.setStyle("Fusion")
-    app.setStyleSheet(STYLESHEET)
 
-    # Tema escuro no Fusion
-    palette = QPalette()
-    palette.setColor(QPalette.Window, QColor("#1a1a2e"))
-    palette.setColor(QPalette.WindowText, QColor("#e0e0e0"))
-    palette.setColor(QPalette.Base, QColor("#16213e"))
-    palette.setColor(QPalette.AlternateBase, QColor("#1a1a2e"))
-    palette.setColor(QPalette.ToolTipBase, QColor("#16213e"))
-    palette.setColor(QPalette.ToolTipText, QColor("#e0e0e0"))
-    palette.setColor(QPalette.Text, QColor("#e0e0e0"))
-    palette.setColor(QPalette.Button, QColor("#16213e"))
-    palette.setColor(QPalette.ButtonText, QColor("#e0e0e0"))
-    palette.setColor(QPalette.Highlight, QColor("#00d4aa"))
-    palette.setColor(QPalette.HighlightedText, QColor("#1a1a2e"))
-    app.setPalette(palette)
+    # Load Montserrat from system if available
+    QFontDatabase.addApplicationFont(
+        os.path.join(
+            str(Path.home()),
+            *(
+                ("Library", "Fonts", "Montserrat-Regular.ttf")
+                if IS_MAC
+                else (".local", "share", "fonts", "Montserrat-Regular.ttf")
+            )
+        )
+    )
 
-    wizard = InstallerWizard()
-    wizard.show()
+    window = InstallerWindow()
+    window.show()
     sys.exit(app.exec_())
 
 

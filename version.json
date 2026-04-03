@@ -1,6 +1,6 @@
 {
-    "versao": "2.1",
-    "data": "2026-04-02",
+    "versao": "2.3",
+    "data": "2026-04-03",
     "url_padrao": "https://script.google.com/macros/s/AKfycbzIY-f0CACljinQLtuBQ8A3PcK7KKE9q81HP5MmXovzsbAtZwXJZ6fhs46A9cEwYu4jCQ/exec",
     "arquivos": [
         "app_gui.py",
@@ -18,5 +18,5 @@
         "scheduler.py",
         "version.json"
     ],
-    "mensagem": ""
+    "mensagem": "Importa\u00e7\u00e3o inteligente de listas: qualquer formato, qualquer coluna"
 }

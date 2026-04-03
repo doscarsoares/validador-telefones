@@ -172,35 +172,22 @@ class App(ctk.CTk):
     # ================================================================
 
     def _setar_icone(self):
+        # On macOS the dock icon comes from the .app bundle's .icns file.
+        # Setting iconphoto here makes the dock icon appear oversized, so skip it.
+        if sys.platform == "darwin":
+            return
+
         base = os.path.dirname(__file__)
         png_path = os.path.join(base, "Icone_validador.png")
-        icns_path = os.path.join(base, "Icone_validador.icns")
 
         try:
-            if sys.platform == "darwin":
-                if os.path.exists(icns_path):
-                    from PIL import Image, ImageTk
-                    img = Image.open(png_path)
-                    self._icon_image = ImageTk.PhotoImage(img)
-                    self.iconphoto(True, self._icon_image)
-                elif os.path.exists(png_path):
-                    from PIL import Image, ImageTk
-                    img = Image.open(png_path)
-                    self._icon_image = ImageTk.PhotoImage(img)
-                    self.iconphoto(True, self._icon_image)
-            else:
-                if os.path.exists(png_path):
-                    from PIL import Image, ImageTk
-                    img = Image.open(png_path)
-                    self._icon_image = ImageTk.PhotoImage(img)
-                    self.iconphoto(True, self._icon_image)
+            if os.path.exists(png_path):
+                from PIL import Image, ImageTk
+                img = Image.open(png_path).convert("RGBA")
+                img = img.resize((64, 64), Image.LANCZOS)
+                self._icon_image = ImageTk.PhotoImage(img)
+                self.iconphoto(True, self._icon_image)
         except Exception:
-            try:
-                if os.path.exists(png_path):
-                    import tkinter as tk
-                    self._icon_image = tk.PhotoImage(file=png_path)
-                    self.iconphoto(True, self._icon_image)
-            except Exception:
                 pass
 
     # ================================================================
